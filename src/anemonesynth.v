@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2024 Toivo Henningsson <toivo.h.h@gmail.com>
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 `default_nettype none
 
 `include "synth_common.vh"
@@ -103,7 +108,7 @@ module SVF_controller (
 endmodule : SVF_controller
 
 module subsamp_voice #(
-		PHASE_BITS = 10, OCT_BITS = 4, SUPERSAMP_BITS = 2, SUBSAMP_BITS = 3, FIR_OUT_TAPS = 3, MAX_TERMS_PER_COEFF = 8, NUM_ACCS = 3, ACC_BITS = 20,
+		parameter PHASE_BITS = 10, OCT_BITS = 4, SUPERSAMP_BITS = 2, SUBSAMP_BITS = 3, FIR_OUT_TAPS = 3, MAX_TERMS_PER_COEFF = 8, NUM_ACCS = 3, ACC_BITS = 20,
 		NUM_OSCS = 2, MOD_MANTISSA_BITS = 6, NUM_MODS = 3, 
 		IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=`STATE_WORDS,
 		NUM_SWEEPS = 5, SWEEP_MANTISSA_BITS = 6
@@ -1090,7 +1095,7 @@ module subsamp_voice_controller #(
 endmodule : subsamp_voice_controller
 
 module anemonesynth_top #(
-		NUM_OSCS = 2, FIR_OUT_TAPS = 3,
+		parameter NUM_OSCS = 2, FIR_OUT_TAPS = 3,
 		IO_BITS = 2, PAYLOAD_CYCLES = 8, STATE_WORDS = `STATE_WORDS,
 		NUM_SWEEPS = 5,
 		//LOG2_NUM_VOICES = 1, LOG2_NUM_SAMPLES_PER_VOICE = 1, NUM_ACCS = 4, ROT_BACK = 1, ROT_SWITCH_STEP = 1, ACC_BITS = 20 //14

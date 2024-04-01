@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Toivo Henningsson
+ * Copyright (c) 2024 Toivo Henningsson <toivo.h.h@gmail.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 

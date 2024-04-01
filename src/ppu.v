@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Toivo Henningsson <toivo.h.h@gmail.com>
+ * Copyright (c) 2024 Toivo Henningsson
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -923,7 +923,7 @@ No state changes are triggered by being granted a read access though,
 The load input can be used to block loading of one or both planes.
 */
 module tilemap_unit #(
-		ADDR_PINS=4, DATA_PINS=4, X_BITS=9, Y_BITS=8, TILE_X_BITS=3, TILE_Y_BITS=3, TILE_BITS=11, MAP_X_BITS=6, MAP_Y_BITS=6,
+		parameter ADDR_PINS=4, DATA_PINS=4, X_BITS=9, Y_BITS=8, TILE_X_BITS=3, TILE_Y_BITS=3, TILE_BITS=11, MAP_X_BITS=6, MAP_Y_BITS=6,
 		ATTR_BITS=5,
 		FULL_COLOR_BITS=4, COLOR_BITS=2,
 		LOG2_NUM_LEVELS=2, BASE_LEVEL=1 // tilemap_unit needs two request levels: id+attr, pixels

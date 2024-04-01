@@ -9,12 +9,19 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Explain how your project works
+The console consists of two parts:
+- The PPU generates a stream of pixels that can be output as a VGA signals, based tile graphics, map, and sprite data read from memory, and the contents of the palette registers.
+- The synth generates a stream of samples by
+	- context switching between voices at a rate of 96 kHz
+		- adding the contributions for four 96 kHz samples from the voice to internal buffers in one go
+	- outputting each 96 kHz sample once it has received contributions from each voice
 
 ## How to test
 
-Explain how to use your project
+TODO
 
 ## External hardware
 
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+A PMOD for VGA is needed for video output, that can accept VGA output according to https://tinytapeout.com/specs/pinouts/#vga-output.
+Means of sound output is TBD, a PMOD for I2S might be needed (if so, haven't decided which one to use yet).
+The RP2040 receives the sound samples, and could alternatively output them in some other way.

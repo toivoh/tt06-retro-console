@@ -818,9 +818,9 @@ module subsamp_voice_controller #(
 
 	always @(posedge clk) begin
 		if (reset) begin
-			counter <= 0;
+			counter <= FIRST_SWITCH_COUNT; // 0
 			sample_counter <= 0;
-			curr_voice <= 0;
+			curr_voice <= 2**LOG2_NUM_VOICES - 1; // 0;
 			step_sample_reg <= 1;
 		end else if (step) begin
 			if (restart_counter) begin
@@ -951,7 +951,7 @@ module subsamp_voice_controller #(
 
 	always @(posedge clk) begin
 		if (reset) begin
-			sample_credits <= 0;
+			sample_credits <= 1; // 0; // To allow tests to start up. TODO: Should it start at zero?
 			sbio_credits <= 1;
 		end else begin
 			if (reg_we && (reg_waddr == `REG_ADDR_SAMPLE_CREDITS)) sample_credits <= reg_wdata;

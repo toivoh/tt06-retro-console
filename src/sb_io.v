@@ -159,7 +159,7 @@ module context_switcher_test #(parameter IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORD
 	wire rx_done_writing = rx_done && rx_mode_state;
 endmodule : context_switcher_test
 
-module context_keeper #(parameter IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*9, MEM_ADDR_BITS=5) (
+module context_keeper #(parameter IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*9, FULL_STATE_WORDS=4*9, MEM_ADDR_BITS=5) (
 		input wire clk, reset,
 
 		output wire [IO_BITS-1:0] tx_pins,
@@ -167,15 +167,14 @@ module context_keeper #(parameter IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*9, 
 	);
 
 	localparam WORD_SIZE = PAYLOAD_CYCLES * IO_BITS;
-	localparam STATE_BITS = WORD_SIZE * STATE_WORDS;
 
-	localparam INDEX_BITS = $clog2(STATE_WORDS);
+	localparam INDEX_BITS = $clog2(FULL_STATE_WORDS);
 
 	localparam SBIO_COUNTER_BITS = $clog2(PAYLOAD_CYCLES) + 1;
 
 
 	reg [INDEX_BITS-1:0] state_index;
-	reg [WORD_SIZE-1:0] state[STATE_WORDS];
+	reg [WORD_SIZE-1:0] state[FULL_STATE_WORDS];
 
 	reg [WORD_SIZE-1:0] mem[2**MEM_ADDR_BITS];
 
@@ -210,7 +209,8 @@ module context_keeper #(parameter IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*9, 
 		if (reset) begin
 			rx_buffer_valid <= 0;
 			tx_buffer_valid <= 0;
-			state_index <= 0;
+			//state_index <= 0;
+			state_index <= STATE_WORDS; // Deliver the last context in state first, only once
 		end else begin
 			rx_buffer_valid <= rx_done;
 		end
@@ -222,7 +222,7 @@ module context_keeper #(parameter IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*9, 
 			tx_buffer <= {state[state_index], `RX_SB_SCAN}; // include start bits
 			tx_buffer_valid <= 1;
 			state[state_index] <= rx_buffer;
-			state_index <= state_index == STATE_WORDS - 1 ? 0 : state_index + 1;
+			state_index <= (state_index == STATE_WORDS - 1 || state_index == FULL_STATE_WORDS - 1) ? 0 : state_index + 1;
 		end else if (rx_buffer_valid_addr) begin
 			tx_buffer <= {mem[rx_buffer], `RX_SB_READ}; // include start bits
 			tx_buffer_valid <= 1;

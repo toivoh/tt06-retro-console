@@ -33,7 +33,7 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 	assign uio_out = uio_out_reg;
 
 	wire [IO_BITS-1:0] tx_pins, rx_pins;
-	anemonesynth_top #(.IO_BITS(IO_BITS)) dut(
+	anemonesynth_top #(.IO_BITS(IO_BITS)) synth(
 		.clk(clk), .reset(!rst_n),
 		.tx_pins(tx_pins), .rx_pins(rx_pins)
 	);

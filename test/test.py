@@ -34,6 +34,7 @@ async def test_voices(dut):
 		PARAM_BIT_LFSR = int(voice.PARAM_BIT_LFSR.value)
 		PARAM_BIT_WF0 = int(voice.PARAM_BIT_WF0.value)
 		PARAM_BIT_PHASECOMB = int(voice.PARAM_BIT_PHASECOMB.value)
+		PARAM_BIT_WFSIGNVOL = int(voice.PARAM_BIT_WFSIGNVOL.value)
 		WF_PARAM_BITS = int(voice.WF_PARAM_BITS.value)
 
 		STATE_WORDS = int(voice.STATE_WORDS.value)
@@ -45,6 +46,7 @@ async def test_voices(dut):
 
 		all_wf_mask = 1 + (1 << WF_PARAM_BITS)
 		phasecomb_default = (1 << WF_PARAM_BITS) << PARAM_BIT_PHASECOMB
+		on_default = (7 << PARAM_BIT_WFSIGNVOL) << (2*WF_PARAM_BITS)
 
 		assert int(voice.USED_STATE_BITS.value) <= int(voice.STATE_BITS.value)
 
@@ -107,7 +109,7 @@ async def test_voices(dut):
 		voice.d_float_period[0].value = 0 # 1 << PHASE_BITS
 		#voice.d_float_period[1].value = (2**OCT_BITS-1) << PHASE_BITS # turn off sub-oscillator
 		voice.d_float_period[1].value = 4 << PHASE_BITS
-		voice.d_params.value = phasecomb_default
+		voice.d_params.value = on_default + phasecomb_default
 	await ClockCycles(dut.clk, 1)
 	if preserved:
 		state0 = int(voice.ostate.value)

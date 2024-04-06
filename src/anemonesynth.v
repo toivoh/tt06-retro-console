@@ -158,7 +158,7 @@ module subsamp_voice #(
 
 	localparam INDEX_BITS = $clog2(STATE_WORDS + 1); // One extra so that '1 can mean idle
 
-	localparam NUM_WFS = 2;
+	localparam NUM_WFS = 3;
 
 
 	genvar i, j;
@@ -417,7 +417,7 @@ module subsamp_voice #(
 
 	wire ringmod;
 
-	localparam WF_PARAM_BITS = WF_BITS + 2*PHASE_SHL_BITS + PHASECOMB_BITS + 1;
+	localparam WF_PARAM_BITS = WF_BITS + 2*PHASE_SHL_BITS + PHASECOMB_BITS + WFSIGNVOL_BITS + 1;
 	assign {ringmod, wfsignvol, phase_comb, phase1_shl, phase0_shl, wf} = wf_params;
 
 	localparam PARAM_BIT_WF_PARAMS0 = 0;
@@ -596,9 +596,8 @@ module subsamp_voice #(
 
 	//wire svf_actual_we = svf_we;
 	//wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index != 0); // Only add input at wf_index == 0 for now. TODO: do for all
-	wire svf_actual_we = svf_we && !(svf_step == 1 && (wf_index[1] != 0 || !wf_on)); // Only add input at wf_index == 0 for now. TODO: do for all
-	//wire invert_phase1 = wf_index[0];
-	//wire invert_phase1 = wf_index[0] && !params[PARAM_BIT_LFSR]; // +- lfsr would mostly cancel it out
+	//wire svf_actual_we = svf_we && !(svf_step == 1 && (wf_index[1] != 0 || !wf_on)); // Only add input at wf_index == 0 or 1 for now. TODO: do for all
+	wire svf_actual_we = svf_we && !(svf_step == 1 && !wf_on);
 	wire [`TARGET_BITS-1:0] target = reset ? `TARGET_NONE : (acc_we ? `TARGET_ACC : (svf_actual_we ? (svf_target_v ? `TARGET_V : `TARGET_Y) : `TARGET_NONE));
 
 	// Update pipeline registers

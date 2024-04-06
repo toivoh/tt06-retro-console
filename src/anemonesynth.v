@@ -226,7 +226,7 @@ module subsamp_voice #(
 
 	wire [PHASE_BITS-1:0] phase_inc = (!(curr_delayed_p || delayed_s) && step_enable ? phase_step : 0);
 	wire sum_phases = !(|osc_enable);
-	wire [PHASE_BITS-1:0] phase_term = sum_phases ? phase[1] : phase_inc;
+	wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_osc1 ? ~phase[1] : phase[1]) : phase_inc;
 	wire [PHASE_BITS-1:0] phase_sum = curr_phase + phase_term;
 
 	reg [PHASE_BITS-1:0] phase_sum_reg; // CONSIDER: Temporarily modify phase[0] or phase[1] to avoid this pipelining register
@@ -486,7 +486,9 @@ module subsamp_voice #(
 	reg restart_acc_reg;
 
 	//wire svf_actual_we = svf_we;
-	wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index != 0); // Only add input at wf_index == 0 for now. TODO: do for all
+	//wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index != 0); // Only add input at wf_index == 0 for now. TODO: do for all
+	wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index[1] != 0); // Only add input at wf_index == 0 for now. TODO: do for all
+	wire invert_osc1 = wf_index[0];
 	wire [`TARGET_BITS-1:0] target = reset ? `TARGET_NONE : (acc_we ? `TARGET_ACC : (svf_actual_we ? (svf_target_v ? `TARGET_V : `TARGET_Y) : `TARGET_NONE));
 
 	// Update pipeline registers

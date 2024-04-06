@@ -90,14 +90,15 @@ async def test_voices(dut):
 
 		voice.d_mods[0].value = 2 << MOD_MANTISSA_BITS
 		voice.d_mods[1].value = 3 << MOD_MANTISSA_BITS
-		voice.d_mods[2].value = 3 << MOD_MANTISSA_BITS
+		voice.d_mods[2].value = 4 << MOD_MANTISSA_BITS
 		voice.d_fir_offset_lsbs.value = 0
 		voice.d_phase[0].value = 0 # 8
 		voice.d_phase[1].value = 0
 		voice.d_delayed_p.value = 0
 		voice.d_delayed_s.value = 0
 		voice.d_float_period[0].value = 0 # 1 << PHASE_BITS
-		voice.d_float_period[1].value = (2**OCT_BITS-1) << PHASE_BITS # turn off sub-oscillator
+		#voice.d_float_period[1].value = (2**OCT_BITS-1) << PHASE_BITS # turn off sub-oscillator
+		voice.d_float_period[0].value = 4 << PHASE_BITS
 	await ClockCycles(dut.clk, 1)
 	if preserved:
 		state0 = int(voice.ostate.value)

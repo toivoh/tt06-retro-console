@@ -50,4 +50,10 @@ module tb ();
 		else counter <= counter + 1;
 	end
 
+`ifndef GL_TEST
+	wire [10-1:0] phase0 = dut.synth.voice.phase[0];
+	wire [10-1:0] phase1 = dut.synth.voice.phase[1];
+	wire [14-1:0] float_period0 = dut.synth.voice.float_period[0];
+	wire [14-1:0] float_period1 = dut.synth.voice.float_period[1];
+`endif
 endmodule

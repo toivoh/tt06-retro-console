@@ -158,6 +158,8 @@ module subsamp_voice #(
 
 	localparam INDEX_BITS = $clog2(STATE_WORDS + 1); // One extra so that '1 can mean idle
 
+	localparam NUM_WFS = 2;
+
 
 	genvar i, j;
 
@@ -228,10 +230,15 @@ module subsamp_voice #(
 	//wire [PHASE_BITS-1:0] phase_inc = (update_phase ? phase_step : 0);
 	wire [PHASE_BITS-1:0] phase_inc = phase_step;
 	wire sum_phases = !(|osc_enable);
-	wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_osc1 ? ~phase[1] : phase[1]) : phase_inc;
-	wire [PHASE_BITS-1:0] phase_sum = curr_phase + phase_term;
+	wire wave_we = svf_we && (svf_step == 1);
+	//wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_osc1 ? ~phase[1] : phase[1]) : phase_inc;
+	//wire [PHASE_BITS-1:0] phase_sum = curr_phase + phase_term;
+	wire [PHASE_BITS-1:0] phase_term1 = phase_inc;
+	wire [PHASE_BITS-1:0] phase_term2 = invert_osc1 ? ~phase[1] : phase[1];
+	wire [PHASE_BITS-1:0] phase_sum1 = curr_phase + phase_term1;
+	wire [PHASE_BITS-1:0] phase_sum2 = phase[0] + phase_term2;
 
-	reg [PHASE_BITS-1:0] phase_sum_reg; // CONSIDER: Temporarily modify phase[0] or phase[1] to avoid this pipelining register
+	reg signed [WAVE_BITS-1:0] wave_reg;
 
 	// Split mantissa
 	wire [PHASE_BITS-1:0] mantissa_p;
@@ -243,7 +250,7 @@ module subsamp_voice #(
 	wire next_delayed_s = {mantissa_sub, {SUBSAMP_BITS{1'b0}}} > rev_phase; // CONSIDER: simplify logic for mantissa_sub comparison
 
 	// valid when osc_enable[0] is high
-	wire phase_rollover = phase[0][PHASE_BITS-1] && !phase_sum[PHASE_BITS-1];
+	wire phase_rollover = phase[0][PHASE_BITS-1] && !phase_sum1[PHASE_BITS-1];
 
 	// LFSR
 	// ----
@@ -259,7 +266,7 @@ module subsamp_voice #(
 	// --------------------------------
 	wire lfsr_active = params[PARAM_BIT_LFSR] && osc_enable[1];
 
-	wire [PHASE_BITS-1:0] phase_next = lfsr_active ? lfsr_base_next : phase_sum;
+	wire [PHASE_BITS-1:0] phase_next = lfsr_active ? lfsr_base_next : phase_sum1;
 	assign lfsr_extra_we = lfsr_active && update_phase;
 
 	// State updates
@@ -307,8 +314,8 @@ module subsamp_voice #(
 			end
 			//fir_offset <= next_fir_offset;
 
-			if (osc_enable[0]) phase_we[0] = update_phase; // phase[0] <= phase_sum;
-			if (osc_enable[1]) phase_we[1] = update_phase; // phase[1] <= phase_sum;
+			if (osc_enable[0]) phase_we[0] = update_phase; // phase[0] <= phase_sum1;
+			if (osc_enable[1]) phase_we[1] = update_phase; // phase[1] <= phase_sum1;
 			if (osc_enable[0]) running_counter_we = 1; // running_counter <= phase_rollover ? 0 : running_counter + !delayed_s;
 
 			if (target_reg == `TARGET_Y) y_we = 1;
@@ -363,12 +370,31 @@ module subsamp_voice #(
 	wire [LFSR_EXTRA_BITS-1:0] lfsr_extra = state[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS];
 	reg [LFSR_EXTRA_BITS-1:0] d_lfsr_extra = 0;
 
-	localparam PARAM_BITS = 1;
-	localparam PARAM_BIT_LFSR = 0;
+	localparam WF_BITS = 3;
+	localparam WF_SAW = 0;
+	localparam WF_SAW_2BIT = 1;
+	localparam WF_TRIANGLE = 2;
+	localparam WF_TRIANGLE_2BIT = 3;
+	localparam WF_SQUARE = 4;
+	localparam WF_PULSE_5_3 = 5;
+	localparam WF_PULSE_6_2 = 6;
+	localparam WF_PULSE_7_1 = 7;
+
+
+	localparam PARAM_BIT_WF0 = 0;
+	localparam PARAM_BIT_LFSR = NUM_WFS*WF_BITS;
+	localparam PARAM_BITS = PARAM_BIT_LFSR + 1;
 
 	localparam PARAM_TOP = LFSR_EXTRA_TOP + PARAM_BITS;
 	wire [PARAM_BITS-1:0] params = state[PARAM_TOP-1 -: PARAM_BITS];
 	reg [PARAM_BITS-1:0] d_params = 0;
+
+	wire [WF_BITS-1:0] wfs[NUM_WFS];
+	generate
+		for (i=0; i < NUM_WFS; i++) begin
+			assign wfs[i] = params[PARAM_BIT_WF0 + WF_BITS*(i + 1) - 1 -: WF_BITS];
+		end
+	endgenerate
 
 
 	localparam USED_STATE_BITS = PARAM_TOP; // Must be highest top parameter
@@ -483,7 +509,7 @@ module subsamp_voice #(
 			if (inc_sweep_oct_counter) sweep_oct_counter <= next_sweep_oct_counter;
 		end
 
-		if (sum_phases) phase_sum_reg <= phase_sum;
+		if (wave_we) wave_reg <= wave;
 	end
 
 	// Shift adder
@@ -551,7 +577,7 @@ module subsamp_voice #(
 			`A_SEL_V:    src_a = v;
 		endcase
 		case (b_sel_reg)
-			`B_SEL_WAVE: src_b = wave << (SHIFTADD_BITS - WAVE_BITS);
+			`B_SEL_WAVE: src_b = wave_reg << (SHIFTADD_BITS - WAVE_BITS);
 			`B_SEL_Y:    src_b = y;
 			`B_SEL_V:    src_b = v;
 		endcase
@@ -604,6 +630,30 @@ module subsamp_voice #(
 
 	wire [RSHIFT_BITS-1:0] rshift_base_svf = curr_mod_oct;
 	wire [RSHIFT_BITS-1:0] rshift_offs_svf = curr_mod_mantissa > rev_rc;
+
+
+	// Waveform generator
+	// ==================
+
+	wire [WF_BITS-1:0] wf = wfs[wf_index];
+
+	wire [PHASE_BITS-1:0] wphase = phase_sum2;
+	wire [2:0] wphase3 = wphase[PHASE_BITS-1 -: 3];
+	// Not an actual register
+	reg signed [WAVE_BITS-1:0] wave;
+	always @(*) begin
+		case (wf)
+			WF_SAW, WF_SAW_2BIT: wave =  {~wphase[PHASE_BITS-1], wphase[PHASE_BITS-2:0]};
+			WF_TRIANGLE, WF_TRIANGLE_2BIT: wave = {~wphase[PHASE_BITS-2], wphase[PHASE_BITS-3:0], 1'b0} ^ (wphase[PHASE_BITS-1] ? -1: 0);
+			WF_SQUARE: wave = (1 << (PHASE_BITS - 1)) ^ (wphase[PHASE_BITS-1] ? -1: 0);
+			WF_PULSE_5_3: wave = {wphase3 < 5, 3'd5, {(WAVE_BITS-4){1'b0}}};
+			WF_PULSE_6_2: wave = {wphase3 < 6, 3'd6, {(WAVE_BITS-4){1'b0}}};
+			WF_PULSE_7_1: wave = {wphase3 < 7, 3'd7, {(WAVE_BITS-4){1'b0}}};
+		endcase
+		if (wf == WF_SAW_2BIT || wf == WF_TRIANGLE_2BIT) begin
+			wave = {wave[WAVE_BITS-1 -: 2], 1'b1, {(WAVE_BITS-3){1'b0}}};
+		end
+	end
 
 	// FIR filter
 	// ==========
@@ -665,11 +715,6 @@ module subsamp_voice #(
 		.i_coeff(coeff_index_m), .i_term(term_index),
 		.last_term_index(last_term_index), .term_sign(flip_sign0), .term_exp(rshift0)
 	);
-
-	wire [PHASE_BITS-1:0] mphase = phase[0];
-	wire [PHASE_BITS-1:0] wphase = phase_sum_reg; // Use both phases
-	wire signed [WAVE_BITS-1:0] wave =  {~wphase[PHASE_BITS-1], wphase[PHASE_BITS-2:0]};
-	//wire signed [WAVE_BITS-1:0] wave = (mphase == 0) ? -512 : 0; // FIR debug: impulse response
 
 	wire restart_acc = new_sample && (tap == 0) && (term_index == 1);
 
@@ -903,8 +948,9 @@ module subsamp_voice_controller #(
 				0: svf_step = 3;
 				1: svf_step = 0;
 				2: begin
-					svf_step = 1;
-					wf_index = 0;
+					//svf_step = 1;
+					//wf_index = 0;
+					svf_enable = 0;
 				end
 			endcase
 		end else if (!fir_enable && counter <= LAST_SVF_COUNT) begin
@@ -913,7 +959,8 @@ module subsamp_voice_controller #(
 				svf_step = 2;
 			end else begin
 				svf_step = 1;
-				wf_index = counter - FIRST_SVF_COUNT;
+				//wf_index = counter - FIRST_SVF_COUNT;
+				wf_index = counter - (FIRST_SVF_COUNT + 1);
 			end
 		end
 	end

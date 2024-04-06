@@ -31,6 +31,8 @@ async def test_voices(dut):
 		ACC_BITS = int(voice.ACC_BITS.value)
 		MOD_MANTISSA_BITS = int(voice.MOD_MANTISSA_BITS.value)
 		SVF_STATE_BITS = int(voice.SVF_STATE_BITS.value)
+		PARAM_BIT_LFSR = int(voice.PARAM_BIT_LFSR.value)
+		PARAM_BIT_WF0 = int(voice.PARAM_BIT_WF0.value)
 
 		STATE_WORDS = int(voice.STATE_WORDS.value)
 		WORD_SIZE = int(voice.WORD_SIZE.value)
@@ -84,6 +86,7 @@ async def test_voices(dut):
 		voice.d_delayed_s.value = 0
 		voice.d_float_period[0].value = 0
 		voice.d_float_period[1].value = 0
+		voice.d_params.value = 2*9 << PARAM_BIT_WF0
 	await ClockCycles(dut.clk, 1)
 	if preserved:
 		state1 = int(voice.ostate.value)
@@ -98,7 +101,8 @@ async def test_voices(dut):
 		voice.d_delayed_s.value = 0
 		voice.d_float_period[0].value = 0 # 1 << PHASE_BITS
 		#voice.d_float_period[1].value = (2**OCT_BITS-1) << PHASE_BITS # turn off sub-oscillator
-		voice.d_float_period[0].value = 4 << PHASE_BITS
+		voice.d_float_period[1].value = 4 << PHASE_BITS
+		voice.d_params.value = 0
 	await ClockCycles(dut.clk, 1)
 	if preserved:
 		state0 = int(voice.ostate.value)

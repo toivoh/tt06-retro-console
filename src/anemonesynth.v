@@ -109,7 +109,7 @@ endmodule : SVF_controller
 
 module subsamp_voice #(
 		parameter PHASE_BITS = 10, OCT_BITS = 4, SUPERSAMP_BITS = 2, SUBSAMP_BITS = 3, FIR_OUT_TAPS = 3, MAX_TERMS_PER_COEFF = 8, NUM_ACCS = 3, ACC_BITS = 20,
-		NUM_OSCS = 2, MOD_MANTISSA_BITS = 6, NUM_MODS = 3, 
+		NUM_OSCS = 2, MOD_MANTISSA_BITS = 6, NUM_MODS = 3, LFSR_BITS = 15,
 		IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=`STATE_WORDS,
 		NUM_SWEEPS = 5, SWEEP_MANTISSA_BITS = 6
 	) (
@@ -224,7 +224,9 @@ module subsamp_voice #(
 	endgenerate
 	wire [PHASE_BITS-1:0] rev_phase = rev_phase0 << step_exp;
 
-	wire [PHASE_BITS-1:0] phase_inc = (!(curr_delayed_p || delayed_s) && step_enable ? phase_step : 0);
+	wire update_phase = !(curr_delayed_p || delayed_s) && step_enable;
+	//wire [PHASE_BITS-1:0] phase_inc = (update_phase ? phase_step : 0);
+	wire [PHASE_BITS-1:0] phase_inc = phase_step;
 	wire sum_phases = !(|osc_enable);
 	wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_osc1 ? ~phase[1] : phase[1]) : phase_inc;
 	wire [PHASE_BITS-1:0] phase_sum = curr_phase + phase_term;
@@ -243,6 +245,22 @@ module subsamp_voice #(
 	// valid when osc_enable[0] is high
 	wire phase_rollover = phase[0][PHASE_BITS-1] && !phase_sum[PHASE_BITS-1];
 
+	// LFSR
+	// ----
+	wire [PHASE_BITS-1:0] lfsr_base_next;
+	wire [LFSR_EXTRA_BITS-1:0] lfsr_extra_next;
+
+	assign {lfsr_extra_next, lfsr_base_next} = lfsr_next;
+	wire [LFSR_BITS-1:0] lfsr = {lfsr_extra, phase[1]};
+
+	wire [LFSR_BITS-1:0] lfsr_next = {lfsr[13:0], (lfsr[0] ^ lfsr[14]) | (lfsr == 0)};
+
+	// Oscillator update including LFSR
+	// --------------------------------
+	wire lfsr_active = params[PARAM_BIT_LFSR] && osc_enable[1];
+
+	wire [PHASE_BITS-1:0] phase_next = lfsr_active ? lfsr_base_next : phase_sum;
+	assign lfsr_extra_we = lfsr_active && update_phase;
 
 	// State updates
 	// -------------
@@ -251,12 +269,12 @@ module subsamp_voice #(
 	reg delayed_s_we, running_counter_we, y_we, v_we;
 	reg [NUM_OSCS-1:0] delayed_p_we; // One per bit!
 	reg [NUM_OSCS-1:0] phase_we;
+	wire lfsr_extra_we;
 	wire [NUM_OSCS-1:0] fp_we;
 	wire [NUM_MODS-1:0] mod_we;
 
 	reg delayed_s_next;
 	reg [NUM_OSCS-1:0] delayed_p_next;
-	wire [PHASE_BITS-1:0] phase_next = phase_sum;
 	wire [MOD_MANTISSA_BITS-1:0] running_counter_next = phase_rollover ? 0 : running_counter + !delayed_s;
 	wire [SVF_STATE_BITS-1:0] yv_next = shift_sum;
 	wire [FP_BITS-1:0] fp_next;
@@ -289,9 +307,8 @@ module subsamp_voice #(
 			end
 			//fir_offset <= next_fir_offset;
 
-			if (osc_enable[0]) phase_we[0] = 1; // phase[0] <= phase_sum;
-			if (osc_enable[1]) phase_we[1] = 1; // phase[1] <= phase_sum;
-
+			if (osc_enable[0]) phase_we[0] = update_phase; // phase[0] <= phase_sum;
+			if (osc_enable[1]) phase_we[1] = update_phase; // phase[1] <= phase_sum;
 			if (osc_enable[0]) running_counter_we = 1; // running_counter <= phase_rollover ? 0 : running_counter + !delayed_s;
 
 			if (target_reg == `TARGET_Y) y_we = 1;
@@ -341,12 +358,24 @@ module subsamp_voice #(
 		end
 	endgenerate
 
+	localparam LFSR_EXTRA_BITS = LFSR_BITS - PHASE_BITS;
+	localparam LFSR_EXTRA_TOP = MODLAST_TOP + LFSR_EXTRA_BITS;
+	wire [LFSR_EXTRA_BITS-1:0] lfsr_extra = state[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS];
+	reg [LFSR_EXTRA_BITS-1:0] d_lfsr_extra = 0;
 
-	localparam USED_STATE_BITS = MODLAST_TOP; // Must be highest top parameter
+	localparam PARAM_BITS = 1;
+	localparam PARAM_BIT_LFSR = 0;
+
+	localparam PARAM_TOP = LFSR_EXTRA_TOP + PARAM_BITS;
+	wire [PARAM_BITS-1:0] params = state[PARAM_TOP-1 -: PARAM_BITS];
+	reg [PARAM_BITS-1:0] d_params = 0;
+
+
+	localparam USED_STATE_BITS = PARAM_TOP; // Must be highest top parameter
 
 	// For testing
 	wire [STATE_BITS-1:0] ostate = {
-		d_mods[2], d_mods[1], d_mods[0], d_float_period[1], d_float_period[0], d_v, d_y, d_running_counter,
+		d_params, d_lfsr_extra, d_mods[2], d_mods[1], d_mods[0], d_float_period[1], d_float_period[0], d_v, d_y, d_running_counter,
 		d_phase[1], d_phase[0], d_fir_offset_lsbs, d_delayed_p, d_delayed_s
 	};
 
@@ -374,6 +403,9 @@ module subsamp_voice #(
 		state_we[PHASE0_TOP-1 -: PHASE_BITS] = phase_we[0] ? '1 : '0;
 		state_nx[PHASE1_TOP-1 -: PHASE_BITS] = phase_next;
 		state_we[PHASE1_TOP-1 -: PHASE_BITS] = phase_we[1] ? '1 : '0;
+
+		state_nx[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS] = lfsr_extra_next;
+		state_we[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS] = lfsr_extra_we ? '1 : '0;
 
 		state_nx[RC_TOP-1 -: MOD_MANTISSA_BITS] = running_counter_next;
 		state_we[RC_TOP-1 -: MOD_MANTISSA_BITS] = running_counter_we ? '1 : '0;
@@ -488,7 +520,8 @@ module subsamp_voice #(
 	//wire svf_actual_we = svf_we;
 	//wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index != 0); // Only add input at wf_index == 0 for now. TODO: do for all
 	wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index[1] != 0); // Only add input at wf_index == 0 for now. TODO: do for all
-	wire invert_osc1 = wf_index[0];
+	//wire invert_osc1 = wf_index[0];
+	wire invert_osc1 = wf_index[0] && !params[PARAM_BIT_LFSR]; // +- lfsr would mostly cancel it out
 	wire [`TARGET_BITS-1:0] target = reset ? `TARGET_NONE : (acc_we ? `TARGET_ACC : (svf_actual_we ? (svf_target_v ? `TARGET_V : `TARGET_Y) : `TARGET_NONE));
 
 	// Update pipeline registers

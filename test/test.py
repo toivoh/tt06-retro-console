@@ -33,6 +33,8 @@ async def test_voices(dut):
 		SVF_STATE_BITS = int(voice.SVF_STATE_BITS.value)
 		PARAM_BIT_LFSR = int(voice.PARAM_BIT_LFSR.value)
 		PARAM_BIT_WF0 = int(voice.PARAM_BIT_WF0.value)
+		PARAM_BIT_PHASECOMB = int(voice.PARAM_BIT_PHASECOMB.value)
+		WF_PARAM_BITS = int(voice.WF_PARAM_BITS.value)
 
 		STATE_WORDS = int(voice.STATE_WORDS.value)
 		WORD_SIZE = int(voice.WORD_SIZE.value)
@@ -40,6 +42,9 @@ async def test_voices(dut):
 		NUM_VOICES = 1 << int(ctrl.LOG2_NUM_VOICES.value)
 		NUM_SAMPLES_PER_VOICE = 1 << int(ctrl.LOG2_NUM_SAMPLES_PER_VOICE.value)
 		NUM_SWITCHES_PER_SAMPLE = NUM_VOICES // NUM_SAMPLES_PER_VOICE
+
+		all_wf_mask = 1 + (1 << WF_PARAM_BITS)
+		phasecomb_default = (1 << WF_PARAM_BITS) << PARAM_BIT_PHASECOMB
 
 		assert int(voice.USED_STATE_BITS.value) <= int(voice.STATE_BITS.value)
 
@@ -86,7 +91,7 @@ async def test_voices(dut):
 		voice.d_delayed_s.value = 0
 		voice.d_float_period[0].value = 0
 		voice.d_float_period[1].value = 0
-		voice.d_params.value = 2*9 << PARAM_BIT_WF0
+		voice.d_params.value = 2*all_wf_mask << PARAM_BIT_WF0
 	await ClockCycles(dut.clk, 1)
 	if preserved:
 		state1 = int(voice.ostate.value)
@@ -102,7 +107,7 @@ async def test_voices(dut):
 		voice.d_float_period[0].value = 0 # 1 << PHASE_BITS
 		#voice.d_float_period[1].value = (2**OCT_BITS-1) << PHASE_BITS # turn off sub-oscillator
 		voice.d_float_period[1].value = 4 << PHASE_BITS
-		voice.d_params.value = 0
+		voice.d_params.value = phasecomb_default
 	await ClockCycles(dut.clk, 1)
 	if preserved:
 		state0 = int(voice.ostate.value)
@@ -133,7 +138,7 @@ async def test_voices(dut):
 
 	dut.rst_n.value = 1
 
-	max_len = 256
+	max_len = 64
 	curr_len = 0
 
 	positions = [32*i for i in range(NUM_VOICES)]
@@ -143,7 +148,7 @@ async def test_voices(dut):
 	with open("event-data"+postfix+".txt", "w") as file:
 		with open("sbio-data.txt", "w" if preserved else "r") as sbio_file:
 			#rx = 0
-			for i in range(1000*20):
+			for i in range(1000*30):
 			#for i in range(400):
 			#for i in range(900):
 				if preserved:

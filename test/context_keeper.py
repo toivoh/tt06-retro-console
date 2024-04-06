@@ -1,6 +1,6 @@
 
 class ContextKeeper:
-	def __init__(self, mem, IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*9, FULL_STATE_WORDS=4*9):
+	def __init__(self, mem, IO_BITS=2, PAYLOAD_CYCLES=8, STATE_WORDS=3*10, FULL_STATE_WORDS=4*10):
 		# Duplicated from synth_common.vh
 		self.TX_SOURCE_SCAN = 0
 		self.TX_SOURCE_OUT  = 1

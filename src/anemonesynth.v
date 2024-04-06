@@ -231,12 +231,13 @@ module subsamp_voice #(
 	wire [PHASE_BITS-1:0] phase_inc = phase_step;
 	wire sum_phases = !(|osc_enable);
 	wire wave_we = svf_we && (svf_step == 1);
-	//wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_osc1 ? ~phase[1] : phase[1]) : phase_inc;
+	//wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_phase1 ? ~phase[1] : phase[1]) : phase_inc;
 	//wire [PHASE_BITS-1:0] phase_sum = curr_phase + phase_term;
 	wire [PHASE_BITS-1:0] phase_term1 = phase_inc;
-	wire [PHASE_BITS-1:0] phase_term2 = invert_osc1 ? ~phase[1] : phase[1];
+	wire [PHASE_BITS-1:0] phase_term2 = invert_phase1 ? ~phase[1] : phase[1];
 	wire [PHASE_BITS-1:0] phase_sum1 = curr_phase + phase_term1;
-	wire [PHASE_BITS-1:0] phase_sum2 = phase[0] + phase_term2;
+	//wire [PHASE_BITS-1:0] phase_sum2 = (phase[0] << phase0_shl) + (phase_term2 << phase1_shl);
+	wire [PHASE_BITS-1:0] phase_sum2 = ((pass_phase0 ? phase[0] : 0) << phase0_shl) + ((pass_phase1 ? phase_term2 : 0) << phase1_shl);
 
 	reg signed [WAVE_BITS-1:0] wave_reg;
 
@@ -279,6 +280,7 @@ module subsamp_voice #(
 	wire lfsr_extra_we;
 	wire [NUM_OSCS-1:0] fp_we;
 	wire [NUM_MODS-1:0] mod_we;
+	wire ringmod_state_we = wave_we;
 
 	reg delayed_s_next;
 	reg [NUM_OSCS-1:0] delayed_p_next;
@@ -286,6 +288,7 @@ module subsamp_voice #(
 	wire [SVF_STATE_BITS-1:0] yv_next = shift_sum;
 	wire [FP_BITS-1:0] fp_next;
 	wire [MOD_BITS-1:0] mod_next;
+	wire ringmod_state_next = wave[WAVE_BITS-1] && ringmod;
 	always @(*) begin
 		delayed_s_we = 0;
 		delayed_p_we = 0;
@@ -370,7 +373,12 @@ module subsamp_voice #(
 	wire [LFSR_EXTRA_BITS-1:0] lfsr_extra = state[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS];
 	reg [LFSR_EXTRA_BITS-1:0] d_lfsr_extra = 0;
 
+	localparam RINGMOD_STATE_TOP = LFSR_EXTRA_TOP + 1;
+	wire ringmod_state = state[RINGMOD_STATE_TOP-1 -: 1];
+	reg d_ringmod_state = 0;
+
 	localparam WF_BITS = 3;
+	wire [WF_BITS-1:0] wf;
 	localparam WF_SAW = 0;
 	localparam WF_SAW_2BIT = 1;
 	localparam WF_TRIANGLE = 2;
@@ -380,19 +388,59 @@ module subsamp_voice #(
 	localparam WF_PULSE_6_2 = 6;
 	localparam WF_PULSE_7_1 = 7;
 
+	localparam PHASE_SHL_BITS = 2;
+	wire [PHASE_SHL_BITS-1:0] phase0_shl, phase1_shl;
+	localparam PHASECOMB_BITS = 2;
+	localparam PHASECOMB_PP = 0;
+	localparam PHASECOMB_PM = 1;
+	localparam PHASECOMB_P0 = 2;
+	localparam PHASECOMB_0P = 3;
+	wire [PHASECOMB_BITS-1:0] phase_comb;
+	// not actual registers
+	reg pass_phase0, pass_phase1, invert_phase1;
+	always @(*) begin
+		case(phase_comb)
+			PHASECOMB_PP: begin pass_phase0 = 1; pass_phase1 = 1; invert_phase1 = 0; end
+			PHASECOMB_PM: begin pass_phase0 = 1; pass_phase1 = 1; invert_phase1 = 1; end
+			PHASECOMB_P0: begin pass_phase0 = 1; pass_phase1 = 0; invert_phase1 = 1'bX; end
+			PHASECOMB_0P: begin pass_phase0 = 0; pass_phase1 = 1; invert_phase1 = 0; end
+		endcase
+	end
 
-	localparam PARAM_BIT_WF0 = 0;
-	localparam PARAM_BIT_LFSR = NUM_WFS*WF_BITS;
+
+	localparam WFSIGNVOL_BITS = 3;
+	wire [WFSIGNVOL_BITS-1:0] wfsignvol;
+	wire wf_sign;
+	wire [WFSIGNVOL_BITS-2:0] rshift_wfvol;
+	assign {wf_sign, rshift_wfvol} = wfsignvol;
+	wire wf_on = wfsignvol != '1;
+
+	wire ringmod;
+
+	localparam WF_PARAM_BITS = WF_BITS + 2*PHASE_SHL_BITS + PHASECOMB_BITS + 1;
+	assign {ringmod, wfsignvol, phase_comb, phase1_shl, phase0_shl, wf} = wf_params;
+
+	localparam PARAM_BIT_WF_PARAMS0 = 0;
+	localparam PARAM_BIT_WF0 = PARAM_BIT_WF_PARAMS0;
+	localparam PARAM_BIT_PHASE0_SHL = PARAM_BIT_WF0 + WF_BITS;
+	localparam PARAM_BIT_PHASE1_SHL = PARAM_BIT_PHASE0_SHL + PHASE_SHL_BITS;
+	localparam PARAM_BIT_PHASECOMB = PARAM_BIT_PHASE1_SHL + PHASE_SHL_BITS;
+	localparam PARAM_BIT_WFSIGNVOL = PARAM_BIT_PHASECOMB + PHASECOMB_BITS;
+	localparam PARAM_BIT_RINGMOD = PARAM_BIT_WFSIGNVOL + WFSIGNVOL_BITS;
+
+	localparam PARAM_BIT_LFSR = NUM_WFS*WF_PARAM_BITS;
 	localparam PARAM_BITS = PARAM_BIT_LFSR + 1;
 
-	localparam PARAM_TOP = LFSR_EXTRA_TOP + PARAM_BITS;
+	localparam PARAM_TOP = RINGMOD_STATE_TOP + PARAM_BITS;
 	wire [PARAM_BITS-1:0] params = state[PARAM_TOP-1 -: PARAM_BITS];
 	reg [PARAM_BITS-1:0] d_params = 0;
 
-	wire [WF_BITS-1:0] wfs[NUM_WFS];
+	//wire [WF_BITS-1:0] wfs[NUM_WFS];
+	wire [WF_PARAM_BITS-1:0] wfs_params[NUM_WFS];
 	generate
 		for (i=0; i < NUM_WFS; i++) begin
-			assign wfs[i] = params[PARAM_BIT_WF0 + WF_BITS*(i + 1) - 1 -: WF_BITS];
+			//assign wfs[i] = params[PARAM_BIT_WF0 + WF_BITS*(i + 1) - 1 -: WF_BITS];
+			assign wfs_params[i] = params[PARAM_BIT_WF_PARAMS0 + WF_PARAM_BITS*(i + 1) - 1 -: WF_PARAM_BITS];
 		end
 	endgenerate
 
@@ -401,7 +449,7 @@ module subsamp_voice #(
 
 	// For testing
 	wire [STATE_BITS-1:0] ostate = {
-		d_params, d_lfsr_extra, d_mods[2], d_mods[1], d_mods[0], d_float_period[1], d_float_period[0], d_v, d_y, d_running_counter,
+		d_params, d_ringmod_state, d_lfsr_extra, d_mods[2], d_mods[1], d_mods[0], d_float_period[1], d_float_period[0], d_v, d_y, d_running_counter,
 		d_phase[1], d_phase[0], d_fir_offset_lsbs, d_delayed_p, d_delayed_s
 	};
 
@@ -432,6 +480,9 @@ module subsamp_voice #(
 
 		state_nx[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS] = lfsr_extra_next;
 		state_we[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS] = lfsr_extra_we ? '1 : '0;
+
+		state_nx[RINGMOD_STATE_TOP-1 -: 1] = ringmod_state_next;
+		state_we[RINGMOD_STATE_TOP-1 -: 1] = ringmod_state_we;
 
 		state_nx[RC_TOP-1 -: MOD_MANTISSA_BITS] = running_counter_next;
 		state_we[RC_TOP-1 -: MOD_MANTISSA_BITS] = running_counter_we ? '1 : '0;
@@ -520,7 +571,7 @@ module subsamp_voice #(
 	wire [`A_SEL_BITS-1:0] a_sel = svf_enable ? a_sel_svf : (restart_acc ? `A_SEL_ZERO : `A_SEL_ACC);
 //	wire [`B_SEL_BITS-1:0] b_sel = svf_enable ? b_sel_svf : `B_SEL_WAVE;
 	wire [`B_SEL_BITS-1:0] b_sel = svf_enable ? b_sel_svf : `B_SEL_Y;
-	wire flip_sign = svf_enable ? b_sign_svf : flip_sign_fir;
+	wire flip_sign = svf_enable ? b_sign_svf ^ (svf_step == 1 && (wf_sign ^ ringmod_state)) : flip_sign_fir;
 
 	wire [RSHIFT_BITS-1:0] rshift_base = svf_enable ? rshift_base_svf : rshift_reg0;
 	//wire [RSHIFT_BITS-1:0] rshift_offs = svf_enable ? rshift_offs_svf : (delayed_s ? SUBSAMP_BITS : 0);
@@ -545,9 +596,9 @@ module subsamp_voice #(
 
 	//wire svf_actual_we = svf_we;
 	//wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index != 0); // Only add input at wf_index == 0 for now. TODO: do for all
-	wire svf_actual_we = svf_we && !(svf_step == 1 && wf_index[1] != 0); // Only add input at wf_index == 0 for now. TODO: do for all
-	//wire invert_osc1 = wf_index[0];
-	wire invert_osc1 = wf_index[0] && !params[PARAM_BIT_LFSR]; // +- lfsr would mostly cancel it out
+	wire svf_actual_we = svf_we && !(svf_step == 1 && (wf_index[1] != 0 || !wf_on)); // Only add input at wf_index == 0 for now. TODO: do for all
+	//wire invert_phase1 = wf_index[0];
+	//wire invert_phase1 = wf_index[0] && !params[PARAM_BIT_LFSR]; // +- lfsr would mostly cancel it out
 	wire [`TARGET_BITS-1:0] target = reset ? `TARGET_NONE : (acc_we ? `TARGET_ACC : (svf_actual_we ? (svf_target_v ? `TARGET_V : `TARGET_Y) : `TARGET_NONE));
 
 	// Update pipeline registers
@@ -629,13 +680,13 @@ module subsamp_voice #(
 	endgenerate
 
 	wire [RSHIFT_BITS-1:0] rshift_base_svf = curr_mod_oct;
-	wire [RSHIFT_BITS-1:0] rshift_offs_svf = curr_mod_mantissa > rev_rc;
+	wire [RSHIFT_BITS-1:0] rshift_offs_svf = (curr_mod_mantissa > rev_rc) + (svf_step == 1 ? rshift_wfvol : 0);
 
 
 	// Waveform generator
 	// ==================
-
-	wire [WF_BITS-1:0] wf = wfs[wf_index];
+	//wire [WF_BITS-1:0] wf = wfs[wf_index];
+	wire [WF_PARAM_BITS-1:0] wf_params = wfs_params[wf_index];
 
 	wire [PHASE_BITS-1:0] wphase = phase_sum2;
 	wire [2:0] wphase3 = wphase[PHASE_BITS-1 -: 3];

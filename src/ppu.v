@@ -1136,7 +1136,7 @@ endmodule
 module PPU #(
 		parameter RAM_LOG2_CYCLES=2, RAM_PINS=4, X_BITS=9, Y_BITS=8, Y_SUB_BITS=1, ID_BITS=6, RAM_SYNC_STEP=3, DATA_DELAY=4,
 		TILE_X_BITS=3, TILE_Y_BITS=3, MAP_X_BITS=6, MAP_Y_BITS=6,
-		HPARAMS=`HPARAMS_320, VPARAMS=`VPARAMS_480
+		HPARAMS=`HPARAMS_320, VPARAMS=`VPARAMS_480, VPARAMS1=`VPARAMS_480, VPARAMS2=`VPARAMS_400, VPARAMS3=`VPARAMS_350
 	) (
 		input wire clk,
 		input wire reset,
@@ -1210,11 +1210,13 @@ module PPU #(
 	// VGA timing
 	// ----------
 
+/*
 	wire [X_BITS-1:0] x0_fp, xe_hsync, x0_bp, xe_active;
 	wire [Y_SCAN_BITS-1:0] y1_active, y1_fp, y1_sync, y1_bp;
 
 	assign {x0_fp, xe_hsync, x0_bp, xe_active} = HPARAMS;
 	assign {y1_active, y1_fp, y1_sync, y1_bp} = VPARAMS;
+*/
 
 	// Sync delay
 	// ----------
@@ -1251,7 +1253,7 @@ module PPU #(
 		.x_cmp(x_cmp), .y_cmp(y_cmp)
 	);
 
-	assign avhsync = {scan_flags[`I_ACTIVE], scan_flags[`I_VSYNC], scan_flags[`I_HSYNC]};
+	assign avhsync = {scan_flags[`I_ACTIVE], scan_flags[`I_VSYNC] ^ vsync_polarity, scan_flags[`I_HSYNC] ^ hsync_polarity};
 
 	/*
 	assign active = scan_flags[`I_ACTIVE];
@@ -1434,7 +1436,12 @@ module PPU #(
 	localparam REG_ADDR_SCROLL =       16; // 4 registers
 	localparam REG_ADDR_CMP    =       20; // 2 registers right now
 	localparam REG_ADDR_DISPLAY_MASK = 22; // 1 register right now
-	localparam REG_ADDR_BASE   =       24;
+	localparam REG_ADDR_BASE   =       24; // NUM_BASE_ADDR_REGS registers
+
+	localparam REG_ADDR_GFXMODE1 = 28;
+	localparam REG_ADDR_GFXMODE2 = 29;
+	localparam REG_ADDR_GFXMODE3 = 30;
+	// Don't make a register with address 2**REG_ADDR_BITS - 1; that is used to signal the stopping condition for the copper
 
 	localparam REG_SUB_ADDR_BITS = 2;
 
@@ -1505,6 +1512,54 @@ module PPU #(
 			if (reg_wen && reg_waddr == REG_ADDR_DISPLAY_MASK && serial_counter == 3) display_mask <= reg_wdata[DISPLAY_MASK_BITS-1:0];
 		end
 	end
+
+	// gfxmode registers
+	reg [8:0] gfxmode1, gfxmode2, gfxmode3;
+
+	wire [X_BITS-1:0] x0_fp_initial, xe_hsync_initial, x0_bp_initial, xe_active_initial;
+	wire [X_BITS-1:0] x0_fp, xe_hsync, x0_bp, xe_active;
+	wire [Y_SCAN_BITS-1:0] y1_active, y1_fp, y1_sync, y1_bp;
+
+	assign {x0_fp_initial, xe_hsync_initial, x0_bp_initial, xe_active_initial} = HPARAMS;
+
+	wire hsync_polarity, vsync_polarity; // 1 = negative
+
+	assign x0_fp     = {6'd15, gfxmode1[2:0]};
+	assign xe_hsync  = { 3'd2, gfxmode1[8:3]};
+	assign x0_bp     = { 4'd3, gfxmode2[4:0]};
+	wire [1:0] vparams_sel =   gfxmode2[6:5];
+	assign {vsync_polarity, hsync_polarity} = gfxmode2[8:7];
+	assign xe_active = gfxmode3;
+
+	assign {y1_active, y1_fp, y1_sync, y1_bp} = vparams;
+
+	// Not an actual register
+	reg [Y_SCAN_BITS*4-1:0] vparams;
+	always @(*) begin
+		case (vparams_sel)
+			0: vparams = VPARAMS;
+			1: vparams = VPARAMS1;
+			2: vparams = VPARAMS2;
+			3: vparams = VPARAMS3;
+		endcase
+	end
+
+	always @(posedge clk) begin
+		if (reset) begin
+			gfxmode1 <= {xe_hsync_initial[5:0], x0_fp_initial[2:0]};
+			gfxmode2 <= {4'b1100, x0_bp_initial[4:0]}; // negative sync polarities, vparams_sel = 0
+			gfxmode3 <= xe_active_initial;
+		end else begin
+			if (reg_wen && reg_waddr == REG_ADDR_GFXMODE1 && serial_counter == 3) gfxmode1 <= reg_wdata;
+			if (reg_wen && reg_waddr == REG_ADDR_GFXMODE2 && serial_counter == 3) gfxmode2 <= reg_wdata;
+			if (reg_wen && reg_waddr == REG_ADDR_GFXMODE3 && serial_counter == 3) gfxmode3 <= reg_wdata;
+		end
+	end
+
+	//assign {x0_fp, xe_hsync, x0_bp, xe_active} = HPARAMS;
+	//assign {y1_active, y1_fp, y1_sync, y1_bp} = VPARAMS;
+	//wire hsync_polarity = 0, vsync_polarity = 0;
+
 
 
 	reg [7:0] count; // Debug counter, not used

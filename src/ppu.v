@@ -1205,7 +1205,8 @@ module PPU #(
 	reg [ADDR_PINS-1:0] addr_bits; // for combinational logic
 	always_comb begin
 		if (ram_running) addr_bits = addr_out;
-		else if (ram_on) addr_bits = (serial_counter == RAM_SYNC_STEP) ? 4'b1111 : 0; // sync on RAM_SYNC_STEP
+		//else if (ram_on) addr_bits = (serial_counter == RAM_SYNC_STEP) ? 4'b1111 : 0; // sync on RAM_SYNC_STEP
+		else if (ram_on) addr_bits = 4'b1 << serial_counter; // sync on one address bit each cycle
 		else addr_bits = '0; // keep address bits low, ram is off
 	end
 	assign addr_pins = addr_bits;

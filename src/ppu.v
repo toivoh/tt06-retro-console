@@ -1174,7 +1174,7 @@ module PPU #(
 
 	localparam Y_SCAN_BITS = Y_BITS + Y_SUB_BITS;
 
-	localparam SYNC_DELAY = 1*4;
+	localparam SYNC_DELAY = 3*4+2;
 	localparam SYNC_DELAY_BITS = $clog2(SYNC_DELAY+1);
 
 	localparam DATA_PINS = RAM_PINS;

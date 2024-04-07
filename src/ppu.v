@@ -101,13 +101,14 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 		//output reg new_line, new_frame, last_pixel,
 		//output wire new_line0,
 
-		// If REGISTER_RASTER_SCAN is defined, scan_flags1, x1, and y1 are one cycle delayed compared to
-		// scan_flags0, x0, and y0; otherwise not
+		// If REGISTER_RASTER_SCAN is defined, scan_flags1, x1, y1, and y_lsb1 are one cycle delayed compared to
+		// scan_flags0, x0, y0, and y_lsb0; otherwise not
 
 		output wire [`NUM_SCAN_FLAGS-1:0] scan_flags0, scan_flags1,
 
 		output wire [X_BITS-1:0] x1,
 		output wire [Y_BITS-1:0] y1,
+		output wire y_lsb1,
 
 		output wire [X_BITS-1:0] x_cmp,
 		output wire [Y_BITS+Y_SUB_BITS-1:0] y_cmp
@@ -121,19 +122,23 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 
 	wire [X_BITS-1:0] x0;
 	wire [Y_BITS-1:0] y0;
+	wire y_lsb0;
 
 `ifdef REGISTER_RASTER_SCAN
 	reg [`NUM_SCAN_FLAGS-1:0] scan_flags;
 	reg [X_BITS-1:0] x;
 	reg [Y_BITS-1:0] y;
+	reg y_lsb;
 
 	assign scan_flags1 = scan_flags;
 	assign x1 = x;
 	assign y1 = y;
+	assign y_lsb1 = y_lsb;
 `else
 	assign scan_flags1 = scan_flags0;
 	assign x1 = x0;
 	assign y1 = y0;
+	assign y_lsb1 = y_lsb0;
 `endif
 
 	wire phase_x;
@@ -163,6 +168,7 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 	);
 	// Invert and remove LSB
 	assign y0 = ~yc0[Y_SCAN_BITS-1 -: Y_BITS];
+	assign y_lsb0 = ~yc0[0];
 	assign y_cmp = (phase_y == PHASE_ACTIVE) ? y0 : 0;
 
 	// If the top X_SUBPHASE_BITS are low, we're in the first subphase.
@@ -182,6 +188,7 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 `ifdef REGISTER_RASTER_SCAN
 		x <= x0;
 		y <= y0;
+		y_lsb <= y_lsb0;
 
 		scan_flags <= scan_flags0;
 `endif
@@ -1133,6 +1140,17 @@ module tilemap_unit #(
 endmodule
 
 
+module ditherer (
+		input wire [2:0] u,
+		input wire [1:0] dither,
+		output wire [1:0] y
+	);
+
+	wire [3:0] x = (u < 2) ? u : ((u - 1) << 1);
+	wire [3:0] x2 = x + dither;
+	assign y = x2[3:2];
+endmodule
+
 module PPU #(
 		parameter RAM_LOG2_CYCLES=2, RAM_PINS=4, X_BITS=9, Y_BITS=8, Y_SUB_BITS=1, ID_BITS=6, RAM_SYNC_STEP=3, DATA_DELAY=4,
 		TILE_X_BITS=3, TILE_Y_BITS=3, MAP_X_BITS=6, MAP_Y_BITS=6,
@@ -1243,13 +1261,15 @@ module PPU #(
 	wire [`NUM_SCAN_FLAGS-1:0] scan_flags;
 	wire [X_CMP_BITS-1:0] x_cmp;
 	wire [Y_CMP_BITS-1:0] y_cmp;
+	wire y_frac;
+	wire x_frac = serial_counter[1];
 	raster_scan2 #(.X_BITS(X_BITS), .Y_BITS(Y_BITS), .Y_SUB_BITS(Y_SUB_BITS)) rs2(
 		.clk(clk), .reset(reset), .enable(serial_counter == 3),
 		.xe_active(xe_active), .x0_fp(x0_fp), .xe_hsync(xe_hsync), .x0_bp(x0_bp),
 		.y1_active(y1_active), .y1_fp(y1_fp), .y1_sync(y1_sync), .y1_bp(y1_bp),
 
 		.scan_flags0(scan_flags0), .scan_flags1(scan_flags),
-		.x1(x), .y1(y),
+		.x1(x), .y1(y), .y_lsb1(y_frac),
 		.x_cmp(x_cmp), .y_cmp(y_cmp)
 	);
 
@@ -1332,7 +1352,19 @@ module PPU #(
 	//wire [PAL_BITS-1:0] pal_out; assign pal_out[7:5] = pixel_out[0] << 2; assign pal_out[4:2] = pixel_out[2:1] << 1; assign pal_out[1:0] = pixel_out[3] << 1; // !!!
 
 	reg [11:0] rgb_out_reg; // temporary output register. TODO: Better pixel composition
-	assign rgb_out = rgb_out_reg;
+
+
+	// Apply dithering
+	//assign rgb_out = rgb_out_reg;
+	wire [1:0] dither = {x_frac ^ y_frac, y_frac};
+	wire [3:0] r0_out, g0_out, b0_out;
+	wire [1:0] r_out, g_out, b_out;
+	assign rgb_out = {r_out, r_out, g_out, g_out, b_out, b_out};
+	assign {r0_out, g0_out, b0_out} = rgb_out_reg;
+	ditherer dither_r(.u(r0_out[3:1]), .dither(dither), .y(r_out));
+	ditherer dither_g(.u(g0_out[3:1]), .dither(dither), .y(g_out));
+	ditherer dither_b(.u(b0_out[3:1]), .dither(dither), .y(b_out));
+
 
 	always @(posedge clk) begin
 		if (serial_counter == 3) begin

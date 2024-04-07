@@ -28,3 +28,8 @@
 `define REG_ADDR_BITS 4
 `define REG_ADDR_SAMPLE_CREDITS 4'd0
 `define REG_ADDR_SBIO_CREDITS   4'd1
+`define REG_ADDR_PPU_CTRL       4'd2
+
+`define PPU_CTRL_BIT_RST_N     3'd0
+`define PPU_CTRL_BIT_SYNC_DATA 3'd1
+`define PPU_CTRL_INITIAL       8'b11

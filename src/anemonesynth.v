@@ -898,7 +898,9 @@ module subsamp_voice_controller #(
 		input wire signed [PAYLOAD_CYCLES*IO_BITS-1:0] out,
 
 		output wire [IO_BITS-1:0] tx_pins,
-		input wire [IO_BITS-1:0] rx_pins
+		input wire [IO_BITS-1:0] rx_pins,
+
+		output wire [7:0] ppu_ctrl
 	);
 
 	localparam FIRST_FIR_COUNT = 0;
@@ -1080,16 +1082,20 @@ module subsamp_voice_controller #(
 	wire have_sample_credits = (sample_credits != 0);
 
 	reg [SBIO_CREDIT_BITS-1:0] sbio_credits;
+	reg [7:0] ppu_ctrl_reg;
+	assign ppu_ctrl = ppu_ctrl_reg;
 
 	always @(posedge clk) begin
 		if (reset) begin
 			sample_credits <= 1; // 0; // To allow tests to start up. TODO: Should it start at zero?
 			sbio_credits <= 1;
+			ppu_ctrl_reg <= `PPU_CTRL_INITIAL;
 		end else begin
 			if (reg_we && (reg_waddr == `REG_ADDR_SAMPLE_CREDITS)) sample_credits <= reg_wdata;
 			else sample_credits <= sample_credits - out_valid;
 
 			if (reg_we && (reg_waddr == `REG_ADDR_SBIO_CREDITS)) sbio_credits <= reg_wdata;
+			if (reg_we && (reg_waddr == `REG_ADDR_PPU_CTRL)) ppu_ctrl_reg <= reg_wdata;
 		end
 	end
 
@@ -1237,7 +1243,9 @@ module anemonesynth_top #(
 		input wire clk, reset,
 
 		output wire [IO_BITS-1:0] tx_pins,
-		input wire [IO_BITS-1:0] rx_pins
+		input wire [IO_BITS-1:0] rx_pins,
+
+		output wire [7:0] ppu_ctrl
 	);
 
 	localparam WORD_SIZE = PAYLOAD_CYCLES * IO_BITS;
@@ -1296,6 +1304,7 @@ module anemonesynth_top #(
 		.read_index(read_index), .write_index(write_index),
 		.rx_buffer(rx_buffer), .sweep_data_valid(sweep_data_valid), .sweep_index(sweep_index),
 		.scan_in(scan_in), .scan_out(scan_out),
-		.tx_pins(tx_pins), .rx_pins(rx_pins)
+		.tx_pins(tx_pins), .rx_pins(rx_pins),
+		.ppu_ctrl(ppu_ctrl)
 	);
 endmodule

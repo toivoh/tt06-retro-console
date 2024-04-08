@@ -312,6 +312,7 @@ module sprite_unit #(
 		input wire [LOG2_NUM_LEVELS*DATA_DELAY-1:0] dt_sreg,
 
 		output wire [3:0] temp_out,
+		output wire [1:0] depth_out,
 
 		input wire [15:0] sorted_base_addr, // Must be aligned to   2^LOG2_SORTED_SIZE
 		input wire [15:0] oam_base_addr,    // Must be aligned to 2*2^ID_BITS
@@ -664,6 +665,7 @@ module sprite_unit #(
 
 	reg [FULL_COLOR_BITS-1:0] top_color, sprite_out_color;
 	reg [ID_BITS+EXTRA_ID_BITS-1:0] top_prio;
+	reg [1:0] top_depth, sprite_out_depth;
 
 	wire [2*COLOR_BITS-1:0] curr_sprite_pixels = sprite_pixels[curr_sprite_buf];
 	// TODO: share sprite id multiplexer?
@@ -680,7 +682,8 @@ module sprite_unit #(
 	wire [X_BITS-1:0] sprite_x;
 	wire sprite_wide, sprite_2bpp;
 	wire [1:0] sprite_pal;
-	assign {sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x[X_BITS+4-1:0];
+	wire [1:0] sprite_depth;
+	assign {sprite_depth, sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x[X_BITS+6-1:0];
 
 	wire sprite_valid = valid_sprites[curr_sprite_buf];
 
@@ -702,6 +705,7 @@ module sprite_unit #(
 	// The last sprite id will always be behind everything except the background color
 	// if curr_prio is used to check if we had a sprite hit
 	wire [ID_BITS+EXTRA_ID_BITS-1:0] curr_prio  = sprite_hit ? sprite_id : '1;
+	wire [1:0] curr_depth                       = sprite_hit ? sprite_depth : '1;
 	wire [FULL_COLOR_BITS-1:0]       curr_color = sprite_hit ? curr_sprite_color : '0; // TODO: other default color?
 
 	wire replace_pixel = (opaque && curr_prio <= top_prio) || first_serial_cycle;
@@ -710,10 +714,15 @@ module sprite_unit #(
 		if (replace_pixel) begin
 			top_color <= curr_color;
 			top_prio <= curr_prio;
+			top_depth <= curr_depth;
 		end
-		if (first_serial_cycle) sprite_out_color <= top_color;
+		if (first_serial_cycle) begin
+			sprite_out_color <= top_color;
+			sprite_out_depth <= top_depth;
+		end
 	end
-	assign temp_out = sprite_out_color;
+	assign temp_out  = sprite_out_color;
+	assign depth_out = sprite_out_depth;
 endmodule
 
 
@@ -958,6 +967,7 @@ module tilemap_unit #(
 		input wire [LOG2_NUM_LEVELS-1:0] dt_in, dt_out,
 
 		output wire [3:0] pixel_out,
+		output wire [1:0] depth_out,
 
 		input wire [15:0] map_base_addr0, map_base_addr1, // Must be aligned to 2^(MAP_X_BITS + MAP_Y_BITS)
 		input wire [15:0] tile_base_addr                  // Must be aligned to 2^(TILE_BITS + TILE_Y_BITS)
@@ -1111,6 +1121,7 @@ module tilemap_unit #(
 	// ==================
 	// Temporary code, probably want to redo the composition
 	reg [3:0] temp_out;
+	reg [1:0] depth_out_reg;
 	//wire [3:0] next_out = pixels0 == '0 ? pixels1 : pixels0;
 
 	wire p0_2bpp = attr[0][0];
@@ -1131,12 +1142,17 @@ module tilemap_unit #(
 	wire [FULL_COLOR_BITS-1:0] curr_color = tile_2bpp ? curr_color_2bpp : curr_pixels;
 
 	wire [3:0] next_out = curr_color;
+	wire [1:0] next_depth = p0_opaque ? 0 : (curr_color != 0 ? 1 : 2);
 
 
 	always @(posedge clk) begin
-		if (serial_counter == 3) temp_out <= next_out;
+		if (serial_counter == 3) begin
+			temp_out <= next_out;
+			depth_out_reg <= next_depth;
+		end
 	end
 	assign pixel_out = temp_out;
+	assign depth_out = depth_out_reg;
 endmodule
 
 
@@ -1296,7 +1312,9 @@ module PPU #(
 
 	// Final pixel composition. TODO: Put somewhere else
 	wire [3:0] pixel_out_s, pixel_out_t;
-	assign pixel_out = (pixel_out_s == 0 || !display_sprites) ? pixel_out_t : pixel_out_s;
+	wire [1:0] depth_out_s, depth_out_t;
+	//assign pixel_out = (pixel_out_s == 0 || !display_sprites) ? pixel_out_t : pixel_out_s;
+	assign pixel_out = (depth_out_s > depth_out_t || !display_sprites) ? pixel_out_t : pixel_out_s;
 
 	// Read coordinator
 	// ----------------
@@ -1419,7 +1437,7 @@ module PPU #(
 		.x(x), .y(y),
 		.serial_counter(serial_counter),
 		.addr_pins(addr_out_s), .data_pins(data_pins),
-		.temp_out(pixel_out_s),
+		.temp_out(pixel_out_s), .depth_out(depth_out_s),
 		.request(request[SPRITE_UNIT_LEVEL+3-1 -: 3]), .dt_in(addr_level), .dt_out(data_level), .dt_sreg(levels_sreg),
 		.sorted_base_addr(sorted_base_addr), .oam_base_addr(oam_base_addr), .tile_base_addr(16'h8000)
 	);
@@ -1451,7 +1469,7 @@ module PPU #(
 		.serial_counter(serial_counter),
 		.addr_pins(addr_out_t), .data_pins(data_pins),
 		.request(request[TILEMAP_UNIT_LEVEL+2-1 -: 2]), .dt_in(addr_level), .dt_out(data_level),
-		.pixel_out(pixel_out_t),
+		.pixel_out(pixel_out_t), .depth_out(depth_out_t),
 		.map_base_addr0('h1000), .map_base_addr1('h2000), .tile_base_addr('hc000)
 	);
 

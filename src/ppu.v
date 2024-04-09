@@ -868,7 +868,13 @@ module copper #(
 				store_valid <= 0;
 			end
 		end else begin
-			addr_reg <= addr_reg + delta_addr;
+			if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] == 3'b11)) begin
+				// Jump, prepare by writing cmp without activating compare
+				addr_reg <= {wdata[WDATA_BITS-1 -: 8], cmp[WDATA_BITS-1 -: 8]};
+			end else begin
+				addr_reg <= addr_reg + delta_addr;
+			end
+
 			// Turn off if there is a write to the highest register number
 			if (serial_counter == 3 && store_valid && &waddr[WADDR_BITS_USED-1:0]) on <= 0;
 			// store_valid stays true as long as wen is false
@@ -891,14 +897,21 @@ module copper #(
 	// Internal register writes
 	// ------------------------
 	// Two register addresses for cmp; cmp_type is set depending on which one is used
-	wire cmp_waddr_match = waddr[WADDR_BITS_USED-1:1] == REG_ADDR_CMP>>1;
+	// Two register addresses for jumping
+	//
+	//     REG_ADDR_CMP:     cmp_x
+	//     REG_ADDR_CMP + 1: cmp_y
+	//     REG_ADDR_CMP + 2: just write cmp
+	// ....REG_ADDR_CMP + 3: jump (don't write cmp)
+	wire cmp_waddr_match = waddr[WADDR_BITS_USED-1:2] == REG_ADDR_CMP>>2;
 	always @(posedge clk) begin
-		if (serial_counter == 3 && wen && cmp_waddr_match) begin
+		if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] != 3'b11)) begin
 			cmp <= wdata;
 		end
 		if (reset || restart) cmp_on <= 0;
 		else if (serial_counter == 3 && wen) begin
-			cmp_on <= cmp_waddr_match; // Turn on if writing cmp, turn off if writing something else
+			// Turn on if writing cmp for cmp_x or cmp_y, turn off if writing something else
+			cmp_on <= cmp_waddr_match && (waddr[1] == 0);
 			cmp_type <= waddr[0];
 		end
 	end
@@ -1485,9 +1498,10 @@ module PPU #(
 
 	localparam REG_ADDR_PAL    =       0; // Must be aligned to palette size, 16 registers right now
 	localparam REG_ADDR_SCROLL =       16; // 4 registers
-	localparam REG_ADDR_CMP    =       20; // 2 registers right now
-	localparam REG_ADDR_DISPLAY_MASK = 22; // 1 register right now
+	localparam REG_ADDR_CMP    =       20; // 4 registers right now
 	localparam REG_ADDR_BASE   =       24; // NUM_BASE_ADDR_REGS registers
+
+	localparam REG_ADDR_DISPLAY_MASK = 27; // 1 register right now
 
 	localparam REG_ADDR_GFXMODE1 = 28;
 	localparam REG_ADDR_GFXMODE2 = 29;

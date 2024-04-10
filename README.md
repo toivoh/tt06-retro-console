@@ -15,6 +15,7 @@ The [Tiny Tapeout 06 Demo Board](https://tinytapeout.com/specs/pcb/) contains an
 Features:
 - PPU:
   - 320x240 @60 fps VGA output (actually 640x480 @60 VGA)
+    - Some lower resolutions are also supported, useful if the design can not be clocked at 50.35 MHz
   - 16 color palette, choosing from 256 possible colors
   - Two independently scrolling tile planes
     - 8x8 pixel tiles
@@ -34,5 +35,9 @@ Features:
   - 16 bit 96 kHz output
   - 4 voices, each with
     - Two oscillators
+      - Option to let the sub-oscillator generate noise
+    - Three waveform generators with choice of sawtooth, triangle, pulse waves with 4 different duty cycles, 2 bit sawooth and triangle
     - 2nd order low pass filter
       - Sweepable volume, cutoff frequency, and resonance
+
+For more details, see https://github.com/toivoh/tt06-retro-console/blob/main/docs/info.md.

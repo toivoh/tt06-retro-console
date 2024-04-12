@@ -25,7 +25,7 @@ module serial_ram #( parameter ADDR_PINS=4, DATA_PINS=4, LOG2_CYCLES=2, RAM_ADDR
 
 	always @(posedge clk) begin
 		if (reset) begin
-			counter <= 2;
+			counter <= 1;
 		end else if (enable) begin
 			addr[ADDR_PINS*counter + ADDR_PINS-1 -: ADDR_PINS] <= addr_in;
 			if (counter == 0) data <= ram[addr[RAM_ADDR_BITS-1:0]];

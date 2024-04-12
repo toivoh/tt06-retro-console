@@ -325,10 +325,14 @@ async def test_ppu(dut):
 		use_2bpp = 1
 		for m in range(2):
 			map_base_addr = map_base_addr0 if m == 0 else map_base_addr1
-			pal = 1-m
+			#pal = 1-m
 			dd = 7 - m
 			for y in range(64):
 				for x in range(64):
+					p = x if m == 0 else y
+					p = p&7
+					if p >= 4: p = 7-p
+					pal = p
 					d = abs(y % (2*dd) - dd) + abs(x % (2*dd) - dd)
 					index = d
 					ram[map_base_addr + x + 64*y].value = index | ((((pal&3) << 1) | use_2bpp) << map_tile_bits)
@@ -349,6 +353,12 @@ async def test_ppu(dut):
 			# {sprite_depth, sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x;
 			ram[oam_base_addr + 2*i + 1].value = (xs&511) | 512 | 1024 | ((pal&3)<<11) | ((depth&3)<<13)
 
+	dut.uio_in.value = 0
+	dut.ui_in.value = 0
+#	if preserved:
+#		dut.ui_in_74.value = 0
+#	else:
+#		dut.ui_in.value = 0
 
 	# reset
 	dut._log.info("reset")
@@ -359,14 +369,100 @@ async def test_ppu(dut):
 	postfix = "" if preserved else "-gl"
 
 	#await ClockCycles(dut.clk, 300 + (32+25)*(64+6)*4)
-	with open("vga-data"+postfix+".txt", "w") as vga_file:
-		for i in range(150 + (32+25)*(64+6)*2):
-			await ClockCycles(dut.clk, 2)
+	#preserved = False
 
-			avhsync = dut.avhsync.value
-			if avhsync.is_resolvable: avhsync = int(avhsync)
-			else: avhsync = -1
-			if i == 0: rgb = 0
-			else: rgb = int(dut.rgb.value)
+	with open("roio-data.txt", "w" if preserved else "r") as roio_file:
+		with open("vga-data"+postfix+".txt", "w") as vga_file:
 
-			vga_file.write(str(avhsync) + " " + str(rgb) + "\n")
+			for i in range(150 + (32+25)*(64+6)*2):
+
+				for j in range(2):
+
+					addr = dut.addr_pins_out.value
+					vga = dut.uo_out.value
+					if vga.is_resolvable: vga = str(vga)
+					else: vga = "x"
+
+					if preserved:
+						data = dut.data_pins.value
+
+						dut.addr_pins.value = addr
+						if data.is_resolvable: dut.ui_in.value = int(data)
+
+						# Save addr, data, vga for use in GL test
+						if addr.is_resolvable: addr = str(int(addr))
+						else: addr = "x"
+						if data.is_resolvable: data = str(int(data))
+						else: data = "x"
+
+						roio_file.write(addr + " " + data + " " + vga + " \n")
+
+					else:
+						addr_p, data_p, vga_p, _ = roio_file.readline().split(" ")
+						if data_p != "x": dut.ui_in.value = int(data_p)
+
+						assert addr_p == "x" or str(int(addr)) == addr_p
+						#assert vga_p == "x" or vga  == vga_p
+
+
+					await ClockCycles(dut.clk, 1)
+
+				avhsync = dut.avhsync.value
+				if avhsync.is_resolvable: avhsync = int(avhsync)
+				else: avhsync = -1
+				if i == 0: rgb = 0
+				else: rgb = int(dut.rgb.value)
+
+				vga_file.write(str(avhsync) + " " + str(rgb) + "\n")
+
+
+				if False:
+					for j in range(2):
+						addr = dut.my_addr_pins.value
+						if addr.is_resolvable: addr = str(int(addr))
+						else: addr = "x"
+						vga = dut.uo_out.value
+						if vga.is_resolvable: vga = str(vga)
+						else: vga = "x"
+
+						if not preserved:
+							addr_p, data_p, vga_p, _ = roio_file.readline().split(" ")
+							if data_p != "x": dut.ui_in.value = int(data_p)
+
+							assert addr_p == "x" or addr == addr_p
+							#assert vga_p == "x" or vga  == vga_p
+
+						await ClockCycles(dut.clk, 1)
+
+						if (preserved):
+							data = dut.data_pins.value
+							if data.is_resolvable: data = int(data)
+							else: data = "x"
+
+							roio_file.write(str(addr) + " " + str(data) + " " + vga + " \n")
+
+					avhsync = dut.avhsync.value
+					if avhsync.is_resolvable: avhsync = int(avhsync)
+					else: avhsync = -1
+					if i == 0: rgb = 0
+					else: rgb = int(dut.rgb.value)
+
+					vga_file.write(str(avhsync) + " " + str(rgb) + "\n")
+
+#@cocotb.test()
+async def test_simple(dut):
+	dut._log.info("start")
+	clock = Clock(dut.clk, 2, units="us")
+	cocotb.start_soon(clock.start())
+
+	# reset
+	dut._log.info("reset")
+	dut.rst_n.value = 0
+	#dut.ui_in.value = 0
+	#dut.ui_in_74.value = 0
+	#dut.uio_in.value = 0
+	await ClockCycles(dut.clk, 10)
+
+	dut.rst_n.value = 1
+
+	await ClockCycles(dut.clk, 10)

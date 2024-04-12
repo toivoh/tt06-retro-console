@@ -1,0 +1,30 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Fri Apr 12 12:49:33 2024
+[*]
+[dumpfile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb.vcd"
+[dumpfile_mtime] "Fri Apr 12 12:44:17 2024"
+[dumpfile_size] 3603608
+[savefile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb_ppu_gl.gtkw"
+[timestart] 0
+[size] 1285 600
+[pos] -1 -1
+*-23.000000 20710000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] tb.
+[sst_width] 297
+[signals_width] 166
+[sst_expanded] 1
+[sst_vpaned_height] 158
+@28
+tb.rst_n
+tb.clk
+@22
+tb.addr_pins[3:0]
+@23
+tb.my_addr_pins[3:0]
+@22
+tb.data_pins[3:0]
+@420
+tb.counter
+[pattern_trace] 1
+[pattern_trace] 0

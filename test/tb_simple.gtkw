@@ -1,0 +1,49 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Fri Apr 12 14:31:11 2024
+[*]
+[dumpfile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb.vcd"
+[dumpfile_mtime] "Fri Apr 12 14:29:53 2024"
+[dumpfile_size] 3736018
+[savefile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb_simple.gtkw"
+[timestart] 56520000
+[size] 1524 600
+[pos] -1 -1
+*-23.000000 45400000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 297
+[signals_width] 126
+[sst_expanded] 1
+[sst_vpaned_height] 158
+@28
+tb.rst_n
+tb.clk
+@421
+tb.counter
+@800022
+tb.uio_out[7:0]
+@28
+(0)tb.uio_out[7:0]
+(1)tb.uio_out[7:0]
+(2)tb.uio_out[7:0]
+(3)tb.uio_out[7:0]
+(4)tb.uio_out[7:0]
+(5)tb.uio_out[7:0]
+(6)tb.uio_out[7:0]
+(7)tb.uio_out[7:0]
+@1001200
+-group_end
+@800022
+tb.ui_in[7:0]
+@28
+(0)tb.ui_in[7:0]
+(1)tb.ui_in[7:0]
+(2)tb.ui_in[7:0]
+(3)tb.ui_in[7:0]
+(4)tb.ui_in[7:0]
+(5)tb.ui_in[7:0]
+(6)tb.ui_in[7:0]
+(7)tb.ui_in[7:0]
+@1001200
+-group_end
+[pattern_trace] 1
+[pattern_trace] 0

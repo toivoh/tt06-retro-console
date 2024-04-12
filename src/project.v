@@ -7,6 +7,7 @@
 `define default_netname none
 
 `include "synth_common.vh"
+`include "ppu_common.vh"
 
 module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 		input  wire [7:0] ui_in,    // Dedicated inputs

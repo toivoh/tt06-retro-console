@@ -1,26 +1,47 @@
 [*]
 [*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Fri Apr 12 06:02:43 2024
+[*] Fri Apr 12 12:49:31 2024
 [*]
 [dumpfile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb.vcd"
-[dumpfile_mtime] "Fri Apr 12 05:52:43 2024"
-[dumpfile_size] 7945111
+[dumpfile_mtime] "Fri Apr 12 12:44:17 2024"
+[dumpfile_size] 3603608
 [savefile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb_ppu.gtkw"
 [timestart] 0
 [size] 2205 979
 [pos] -1 -1
-*-28.000000 16546000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-23.000000 21050000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] tb.
 [treeopen] tb.dut.
 [treeopen] tb.dut.ppu.
 [treeopen] tb.dut.ppu.rs2.
 [sst_width] 297
-[signals_width] 142
+[signals_width] 166
 [sst_expanded] 1
 [sst_vpaned_height] 290
 @28
 tb.clk
 tb.dut.reset
+@29
+tb.rst_n
+@420
+tb.counter
+@22
+tb.dut.addr_pins[3:0]
+tb.addr_pins[3:0]
+tb.my_addr_pins[3:0]
+@800022
+tb.dut.uio_out[7:0]
+@28
+(0)tb.dut.uio_out[7:0]
+(1)tb.dut.uio_out[7:0]
+(2)tb.dut.uio_out[7:0]
+(3)tb.dut.uio_out[7:0]
+(4)tb.dut.uio_out[7:0]
+(5)tb.dut.uio_out[7:0]
+(6)tb.dut.uio_out[7:0]
+(7)tb.dut.uio_out[7:0]
+@1001200
+-group_end
 @22
 tb.dut.addr_pins[3:0]
 tb.dut.data_pins[3:0]
@@ -66,7 +87,16 @@ tb.dut.ppu.rs2.y_scan.counter[8:0]
 tb.extram.counter[1:0]
 @22
 tb.extram.addr[15:0]
-@23
 tb.extram.addr_in[3:0]
+@200
+-
+@22
+tb.dut.ppu.gfxmode1[8:0]
+tb.dut.ppu.gfxmode2[8:0]
+tb.dut.ppu.gfxmode3[8:0]
+tb.dut.ppu.vparams[35:0]
+@420
+tb.dut.ppu.VPARAMS
+tb.dut.ppu.VPARAMS1
 [pattern_trace] 1
 [pattern_trace] 0

@@ -3,7 +3,7 @@
 /* This testbench just instantiates the module and makes some convenient wires
 	 that can be driven / tested by the cocotb test.py.
 */
-module tb ();
+module tb #(RAM_EXTRA_DELAY=9) ();
 
 	// Dump the signals to a VCD file. You can view it with gtkwave.
 	initial begin
@@ -16,7 +16,12 @@ module tb ();
 	reg clk;
 	reg rst_n;
 	reg ena;
+`ifdef GL_TEST
 	reg [7:0] ui_in;
+`else
+	reg [7:4] ui_in_74;
+	wire [7:0] ui_in = {ui_in_74, data_pins};
+`endif
 	reg [7:0] uio_in;
 	wire [7:0] uo_out;
 	wire [7:0] uio_out;
@@ -50,7 +55,18 @@ module tb ();
 		else counter <= counter + 1;
 	end
 
+	wire [2:0] avhsync = {uio_out[6], uo_out[3], uo_out[7]};
+	wire [5:0] rgb = {uo_out[0], uo_out[4], uo_out[1], uo_out[5], uo_out[2], uo_out[6]};
+
+	wire [3:0] addr_pins = uio_out[3:0];
+
 `ifndef GL_TEST
+	wire [3:0] data_pins;
+	serial_ram #(.RAM_ADDR_BITS(16), .DELAY(RAM_EXTRA_DELAY)) extram (
+		.clk(clk), .reset(!rst_n), .enable(1'b1),
+		.addr_in(addr_pins), .data_out(data_pins)
+	);
+
 	wire [10-1:0] phase0 = dut.synth.voice.phase[0];
 	wire [10-1:0] phase1 = dut.synth.voice.phase[1];
 	wire [14-1:0] float_period0 = dut.synth.voice.float_period[0];

@@ -74,7 +74,8 @@ module axis_scan_y #( parameter BITS=9, NUM_PHASES=4 ) (
 	always @(posedge clk) begin
 		if (reset) begin
 			phase <= reset_phase;
-			counter <= counts[BITS*reset_phase+BITS-1 -: BITS];
+			//counter <= counts[BITS*reset_phase+BITS-1 -: BITS];
+			counter <= 0;
 		end else if (enable) begin
 			if (counter == 0) begin
 				phase <= next_phase;
@@ -162,7 +163,9 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 	wire [Y_SCAN_BITS-1:0] yc0;
 	//my_axis_scan #(.BITS(Y_BITS), .NUM_PHASES(NUM_PHASES)) y_scan(
 	axis_scan_y #(.BITS(Y_SCAN_BITS), .NUM_PHASES(NUM_PHASES)) y_scan(
-		.clk(clk), .reset(reset), .enable(scan_flags0[`I_NEW_LINE]), .reset_phase(PHASE_ACTIVE),
+		.clk(clk), .reset(reset), .enable(scan_flags0[`I_NEW_LINE]),
+		//.reset_phase(PHASE_ACTIVE),
+		.reset_phase(PHASE_SYNC),
 		.counts({y1_bp, y1_sync, y1_fp, y1_active}),
 		.phase(phase_y), .counter(yc0)
 	);
@@ -177,8 +180,10 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 
 	assign scan_flags0[`I_NEW_FRAME] = scan_flags0[`I_NEW_LINE] && phase_y == PHASE_SYNC && yc0 == 0; // TODO: correct?
 
-	assign scan_flags0[`I_ACTIVE] = (phase_x == 1 && subphase0 == 1) && (phase_y == PHASE_ACTIVE);
-	assign scan_flags0[`I_V_ACTIVE] = (phase_y == PHASE_ACTIVE);
+	wire h_active = (phase_x == 1 && subphase0 == 1);
+	wire v_active = (phase_y == PHASE_ACTIVE);
+	assign scan_flags0[`I_ACTIVE] = h_active && v_active;
+	assign scan_flags0[`I_V_ACTIVE] = v_active;
 	assign scan_flags0[`I_HSYNC] = (phase_x == 0 && subphase0 == 1);
 	assign scan_flags0[`I_VSYNC] = vsync0;
 	assign scan_flags0[`I_ACTIVE_OR_BP] = phase_x;
@@ -1183,7 +1188,7 @@ endmodule
 module PPU #(
 		parameter RAM_LOG2_CYCLES=2, RAM_PINS=4, X_BITS=9, Y_BITS=8, Y_SUB_BITS=1, ID_BITS=6, RAM_SYNC_STEP=3, DATA_DELAY=4,
 		TILE_X_BITS=3, TILE_Y_BITS=3, MAP_X_BITS=6, MAP_Y_BITS=6,
-		HPARAMS=`HPARAMS_320, VPARAMS=`VPARAMS_480, VPARAMS1=`VPARAMS_480, VPARAMS2=`VPARAMS_400, VPARAMS3=`VPARAMS_350
+		HPARAMS=`HPARAMS_320, VPARAMS=`VPARAMS_480, VPARAMS1=`VPARAMS_64_TEST, VPARAMS2=`VPARAMS_400, VPARAMS3=`VPARAMS_350
 	) (
 		input wire clk,
 		input wire reset,
@@ -1203,7 +1208,7 @@ module PPU #(
 
 	localparam Y_SCAN_BITS = Y_BITS + Y_SUB_BITS;
 
-	localparam SYNC_DELAY = 3*4+2;
+	localparam SYNC_DELAY = 1*4+2;
 	localparam SYNC_DELAY_BITS = $clog2(SYNC_DELAY+1);
 
 	localparam DATA_PINS = RAM_PINS;
@@ -1339,9 +1344,9 @@ module PPU #(
 	localparam COPPER_LEVEL       = 4; // 1 levels
 	localparam TILEMAP_UNIT_LEVEL = 5; // Highest priority, 2 levels
 
-	assign request_filtered[SPRITE_UNIT_LEVEL +3-1 -: 3] = (sprite_tile_read_active && load_sprites) ? request[SPRITE_UNIT_LEVEL +3-1 -: 3] : '0;
-	assign request_filtered[TILEMAP_UNIT_LEVEL+2-1 -: 2] = sprite_tile_read_active ? request[TILEMAP_UNIT_LEVEL+2-1 -: 2] : '0;
-	assign request_filtered[COPPER_LEVEL] = request[COPPER_LEVEL];
+	assign request_filtered[SPRITE_UNIT_LEVEL +3-1 -: 3] = (ram_running && sprite_tile_read_active && load_sprites) ? request[SPRITE_UNIT_LEVEL +3-1 -: 3] : '0;
+	assign request_filtered[TILEMAP_UNIT_LEVEL+2-1 -: 2] = ram_running && sprite_tile_read_active ? request[TILEMAP_UNIT_LEVEL+2-1 -: 2] : '0;
+	assign request_filtered[COPPER_LEVEL] = ram_running && request[COPPER_LEVEL];
 
 
 	// Don't read sprite and tile data
@@ -1391,7 +1396,7 @@ module PPU #(
 	wire [1:0] dither = {x_frac ^ y_frac, y_frac};
 	wire [3:0] r0_out, g0_out, b0_out;
 	wire [1:0] r_out, g_out, b_out;
-	assign rgb_out = {r_out, r_out, g_out, g_out, b_out, b_out};
+	assign rgb_out = active ? {r_out, r_out, g_out, g_out, b_out, b_out} : '0;
 	assign {r0_out, g0_out, b0_out} = rgb_out_reg;
 	ditherer dither_r(.u(r0_out[3:1]), .dither(dither), .y(r_out));
 	ditherer dither_g(.u(g0_out[3:1]), .dither(dither), .y(g_out));

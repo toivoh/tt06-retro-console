@@ -53,13 +53,13 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 	wire [RAM_PINS-1:0] addr_pins_out = reset_ppu ? data_pins : addr_pins; // Loopback data_pins -> addr_pins when the PPU is in reset
 
 	wire [11:0] rgb_out;
-	wire hsync, vsync;
-	PPU #(.RAM_PINS(RAM_PINS)) ppu(
+	wire hsync, vsync, active;
+	PPU #(.RAM_PINS(RAM_PINS), .VPARAMS1(`VPARAMS_64_TEST)) ppu(
 		.clk(clk), .reset(reset_ppu),
 		.addr_pins(addr_pins), .data_pins(data_pins),
 		//.pixel_out(pixel_out),
 		.rgb_out(rgb_out),
-		//.active(active),
+		.active(active),
 		.hsync(hsync), .vsync(vsync)
 	);
 
@@ -75,11 +75,12 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 	};
 
 	assign uio_oe = 8'b00111111;
-	assign uio_out0[7:6] = '0;
 
 	assign data_pins = sync_data ? ui_in_reg[3:0] : ui_in[3:0];
 	assign rx_pins  = uio_in_reg[7:6];
 
 	assign uio_out0[3:0] = addr_pins_out;
 	assign uio_out0[5:4] = tx_pins;
+	assign uio_out0[6] = active;
+	assign uio_out0[7] = 1'b0;
 endmodule

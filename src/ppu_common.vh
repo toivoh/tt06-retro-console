@@ -38,3 +38,7 @@
 
 `define VPARAMS_350    {9'd349, 9'd36, 9'd1, 9'd59} // Wx350
 `define VPARAMS_175_b8 {8'd174, 8'd18, 8'd0, 8'd29} // Wx175 = Wx350 halved with fp rounded up
+
+
+// For testing
+`define VPARAMS_64_TEST {9'd63,  9'd1, 9'd0,  9'd2}

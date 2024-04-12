@@ -202,3 +202,171 @@ async def test_voices(dut):
 					if curr_len >= max_len: break
 
 				await ClockCycles(dut.clk, 1)
+
+
+@cocotb.test()
+async def test_ppu(dut):
+	dut._log.info("start")
+	clock = Clock(dut.clk, 2, units="us")
+	cocotb.start_soon(clock.start())
+
+	preserved = True
+	try:
+		ram = dut.extram.ram
+	except AttributeError:
+		preserved = False
+
+	if preserved:
+		reg_addr_pal    = 0
+		reg_addr_scroll = 16
+		reg_addr_cmp_x  = 20
+		reg_addr_cmp_y  = 21
+		reg_addr_jump1_lsb = 22
+		reg_addr_jump2_msb = 23
+		reg_addr_sorted_base = 24
+		reg_addr_oam_base = 25
+		reg_addr_display_mask = 27
+
+		reg_addr_gfxmode1 = 28
+		reg_addr_gfxmode2 = 29
+		reg_addr_gfxmode3 = 30
+
+		copper_addr_bits = 7
+		copper_data_bits = 16 - copper_addr_bits
+		map_tile_bits = 11
+
+		sorted_base_addr = 0
+		oam_base_addr = 0x80
+		sprite_tile_base_addr = 0x8000
+		map_base_addr0 = 0x1000
+		map_base_addr1 = 0x2000
+		map_tile_base_addr = 0xc000
+		copper_base_addr = 0x4000
+
+		copper_addr_bits = 7
+		copper_data_bits = 16 - copper_addr_bits
+		map_tile_bits = 11
+
+
+		#for i in range(65535):
+		#	ram[i].value = i
+
+		#gfxmode = [15, 61, 159] # hparams_32_test = [128-1, 127+2, 128-3, 127+32]
+		#gfxmode = [15, 48, 159] # hparams_32_test = [128-1, 127+2, 128-16, 127+32]
+		gfxmode = [36, 48, 159] # hparams_32_test = [128-4, 127+5, 128-16, 127+32]
+
+		# Copper list
+		# -----------
+		copper_addr = copper_base_addr
+
+		for i in range(3):
+			data = gfxmode[i]
+			ram[copper_addr].value = ((reg_addr_gfxmode1 + i) | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+		for (i, data) in enumerate([sorted_base_addr>>6, oam_base_addr>>7]):
+			ram[copper_addr].value = ((reg_addr_sorted_base + i) | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+		# TODO: test both even and odd scroll_x for both planes
+		for (i, data) in enumerate([0,0,23,26]):
+			ram[copper_addr].value = ((reg_addr_scroll + i) | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+		table = [0,3,5,7]
+		for i in range(16):
+			#data = (i | (i << 4)) << 1
+			#s, r, g, b = (i >> 3)&1, (i >> 2)&1, (i >> 1)&1, (i >> 0)&1
+			#data = (((r << 7) | (g << 4) | (b << 1)) | (0x6d*s)) << 1
+			#data = (table[2*r+s] << 6) | (table[2*g+s] << 3) | table[2*b+s]
+			i1, i2 = i&3, i>>2
+			data = (table[i2] << 6) | (table[max(0, i1-1)] << 3) | table[i1]
+			#print(data)
+
+			ram[copper_addr].value = ((reg_addr_pal + i) | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+		#data = 63 - 4 # Don't display sprites for now
+		#ram[copper_addr].value = ((reg_addr_display_mask) | (data << copper_addr_bits)) & 0xffff
+		copper_addr += 1
+
+		# stop code
+		ram[copper_addr].value = 0xffff
+
+
+		# Pixel data
+		# ----------
+		# Tile map
+		for k in range(16):
+			for y in range(8):
+				line = 0
+				for x in range(8):
+					d = abs(x-3) + abs(y-3)
+					color = 3 - min(3, abs(k - 3 - d))
+					line |= (color & 3) << 2*x
+				ram[map_tile_base_addr + y + 8*k].value = line
+
+		# Sprites
+		for k in range(16):
+			for j in range(2):
+				#if k==5: print("k = ", k, "j = ", j)
+				for y in range(8):
+					line = 0
+					for xt in range(8):
+						x = j*8 + xt
+						d = (abs(x-7)>>1) + abs(y-3)
+						#d = abs(y-3)
+						#d = (abs(x-7)>>1)
+						#d = (abs(xt-3)>>1) + abs(y-3)
+						color = 3 - min(3, abs(k - 3 - d))
+						line |= (color & 3) << (2*xt)
+					ram[sprite_tile_base_addr + y + 8*(j + 2*k)].value = line
+
+					#if k==5: print("line = ", hex(line))
+
+		# Tile map data
+		# -------------
+		use_2bpp = 1
+		for m in range(2):
+			map_base_addr = map_base_addr0 if m == 0 else map_base_addr1
+			pal = 1-m
+			dd = 7 - m
+			for y in range(64):
+				for x in range(64):
+					d = abs(y % (2*dd) - dd) + abs(x % (2*dd) - dd)
+					index = d
+					ram[map_base_addr + x + 64*y].value = index | ((((pal&3) << 1) | use_2bpp) << map_tile_bits)
+
+		# Sprite data
+		# -----------
+		for i in range(64):
+			#xs = 128 - 2 + i*4
+			xs = 128+24 - i*5
+			ys = 256 - 32 + i*5
+			tile = (i&1) + 4
+			pal = i&3
+			depth = 0
+
+			ram[sorted_base_addr + i].value = (ys&255) | (i << 8) # {id, y}
+
+			ram[oam_base_addr + 2*i].value     = (ys&7) | (tile << 4)
+			# {sprite_depth, sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x;
+			ram[oam_base_addr + 2*i + 1].value = (xs&511) | 512 | 1024 | ((pal&3)<<11) | ((depth&3)<<13)
+
+
+	# reset
+	dut._log.info("reset")
+	dut.rst_n.value = 0
+	await ClockCycles(dut.clk, 10)
+	dut.rst_n.value = 1
+
+	postfix = "" if preserved else "-gl"
+
+	#await ClockCycles(dut.clk, 300 + (32+25)*(64+6)*4)
+	with open("vga-data"+postfix+".txt", "w") as vga_file:
+		for i in range(150 + (32+25)*(64+6)*2):
+			await ClockCycles(dut.clk, 2)
+
+			avhsync = dut.avhsync.value
+			if avhsync.is_resolvable: avhsync = int(avhsync)
+			else: avhsync = -1
+			if i == 0: rgb = 0
+			else: rgb = int(dut.rgb.value)
+
+			vga_file.write(str(avhsync) + " " + str(rgb) + "\n")

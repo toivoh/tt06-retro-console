@@ -22,7 +22,7 @@ module sbio_monitor #(parameter IO_BITS=2, SENS_BITS=2, COUNTER_BITS=5, INACTIVE
 	assign start = !active && start_present;
 	wire reset_counter = (!active && !start_present) || done;
 
-	wire [COUNTER_BITS-1:0] next_counter = reset_counter ? INACTIVE_COUNTER_VALUE : counter + 1;
+	wire [COUNTER_BITS-1:0] next_counter = reset_counter ? INACTIVE_COUNTER_VALUE : counter + {{(COUNTER_BITS-1){1'b0}}, 1'b1};
 
 	always @(posedge clk) begin
 		if (reset) begin

@@ -43,7 +43,7 @@ module axis_scan_x #( parameter BITS=9, COMPARE_COARSE_BITS=2 ) (
 				counter <= curr_initial;
 				phase <= !phase;
 			end else begin
-				counter <= counter + enable;
+				counter <= counter + {{(BITS-1){1'b0}}, enable};
 			end
 		end
 	end
@@ -68,7 +68,7 @@ module axis_scan_y #( parameter BITS=9, NUM_PHASES=4 ) (
 
 	localparam PHASE_BITS = $clog2(NUM_PHASES);
 
-	wire [PHASE_BITS-1:0] next_phase = phase == NUM_PHASES - 1 ? 0 : phase + 1;
+	wire [PHASE_BITS-1:0] next_phase = ({1'b0, phase} == NUM_PHASES - 1) ? 0 : phase + 1;
 	//reg [PHASE_BITS-1:0] next_phase;
 
 	always @(posedge clk) begin
@@ -172,7 +172,7 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 	// Invert and remove LSB
 	assign y0 = ~yc0[Y_SCAN_BITS-1 -: Y_BITS];
 	assign y_lsb0 = ~yc0[0];
-	assign y_cmp = (phase_y == PHASE_ACTIVE) ? y0 : 0;
+	assign y_cmp = (phase_y == PHASE_ACTIVE) ? ~yc0 : 0;
 
 	// If the top X_SUBPHASE_BITS are low, we're in the first subphase.
 	wire subphase0 = |x0[X_BITS-1 -: X_SUBPHASE_BITS];
@@ -394,9 +394,9 @@ module sprite_unit #(
 
 			// Override for idy stage: generalized stepping logic to support wider counter and backtracking
 			if (i == IDY_INDEX) assign next_out_counters[i] = next_sorted_addr[STAGE_COUNTER_BITS:0];
-			else                assign next_out_counters[i] = out_counters[i] + (last_serial_cycle & grant[i] & inc_out[i]);
+			else                assign next_out_counters[i] = out_counters[i] + {{(STAGE_COUNTER_BITS){1'b0}}, (last_serial_cycle & grant[i] & inc_out[i])};
 
-			assign next_in_counters[i]  = in_counters[i]  + (last_serial_cycle & got[i] & inc_in[i]);
+			assign next_in_counters[i]  = in_counters[i]  + {{(STAGE_COUNTER_BITS){1'b0}}, (last_serial_cycle & got[i] & inc_in[i])};
 
 			always @(posedge clk) begin
 				if (reset || restart) begin
@@ -432,7 +432,7 @@ module sprite_unit #(
 
 	// Backtracking: grant[IDY_INDEX] steps forward as usual, but dec_idy_out steps backward
 	wire signed [1:0] delta_sorted_addr = last_serial_cycle ? (grant[IDY_INDEX] - dec_idy_out) : 0;
-	wire signed [LOG2_SORTED_SIZE+1-1:0] delta_sorted_addr_ext = delta_sorted_addr;
+	wire signed [LOG2_SORTED_SIZE+1-1:0] delta_sorted_addr_ext = {{(LOG2_SORTED_SIZE-1){1'b0}}, delta_sorted_addr};
 	wire [LOG2_SORTED_SIZE+1-1:0] next_sorted_addr = sorted_addr + delta_sorted_addr_ext;
 
 	wire pause_scan;
@@ -494,11 +494,12 @@ module sprite_unit #(
 	always @(posedge clk) begin
 		// 8 bits y, then 8 bits id
 		if (serial_counter == 1) y_matched <= y_match; // Check when data8 contains y
-		if (last_serial_cycle && y_matched_store) id_buffer[in_counter_idy] <= data8; // Store when data8 contains id
+		if (last_serial_cycle && y_matched_store) id_buffer[in_counter_idy] <= data8[ID_BITS-1:0]; // Store when data8 contains id
 	end
 
 	// Increment in_counter_idy only if y_matched (increment the others always). Assumes IDY_INDEX = 0.
-	assign inc_in = y_matched_store | (-1 << 1);
+	//assign inc_in = y_matched_store | (-1 << 1);
+	assign inc_in = {2'b11, y_matched_store}; // assumes NUM_STAGES = 3
 	wire dec_idy_out = idy_backtrack;
 
 	// OAM request out
@@ -513,7 +514,8 @@ module sprite_unit #(
 	assign request[OAM_INDEX] = (out_counter_oam != in_counter_idy) && !oam_load_sprite_valid;
 	assign request_addr[OAM_INDEX] = {oam_base_addr[15:ID_BITS+1], oam_id, oam_req_step}; // load attr_y first, then attr_x
 
-	assign inc_out = -1 & ~(1 << OAM_INDEX) | (oam_req_step << OAM_INDEX); // increase out counter if loading attr_x
+	//assign inc_out = -1 & ~(1 << OAM_INDEX) | (oam_req_step << OAM_INDEX); // increase out counter if loading attr_x
+	assign inc_out = {1'b1, oam_req_step, 1'b1}; // assumes NUM_STAGES = 3, OAM_INDEX = 1
 
 	always @(posedge clk) begin
 		if (reset || restart) oam_req_step <= 0;
@@ -620,8 +622,8 @@ module sprite_unit #(
 
 //	wire [SPRITE_SCAN_BITS-1:0] curr_catch_up = x_match && !(reset || restart) ? x_diff[SPRITE_SCAN_BITS-1:0] : '1;
 	// Only every other pixel needs catch up for wide sprites
-	wire [SPRITE_SCAN_BITS-1:0] curr_catch_up0 = (x_diff[SPRITE_SCAN_BITS:0] + 1) >> sprite_wide;
-	wire [SPRITE_SCAN_BITS-1:0] curr_catch_up = x_match && !(reset || restart) ? curr_catch_up0 : '0;
+	wire [SPRITE_SCAN_BITS:0] curr_catch_up0 = (x_diff[SPRITE_SCAN_BITS:0] + 1) >> sprite_wide;
+	wire [SPRITE_SCAN_BITS-1:0] curr_catch_up = x_match && !(reset || restart) ? curr_catch_up0[SPRITE_SCAN_BITS-1:0] : '0;
 
 	generate
 		for (i = 0; i < NUM_SBUFS; i++) begin
@@ -658,7 +660,7 @@ module sprite_unit #(
 				// TODO: The condition seems redundant; pix_pos_hit contains got[PIX_INDEX]
 				if ((reset || restart) || (pix_pos_hit && curr_sprite_match && got[PIX_INDEX] && final_pixels_in)) sprite_catch_up_counters[i] <= curr_catch_up;
 				// Otherwise, try to catch up. Will not be able to catch up while sprite pixel data is still being shifted in.
-				else sprite_catch_up_counters[i] <= sprite_catch_up_counters[i] - catch_up;
+				else sprite_catch_up_counters[i] <= sprite_catch_up_counters[i] - {{(SPRITE_SCAN_BITS-1){1'b0}}, catch_up};
 			end
 		end
 	endgenerate
@@ -672,7 +674,7 @@ module sprite_unit #(
 	reg [ID_BITS+EXTRA_ID_BITS-1:0] top_prio;
 	reg [1:0] top_depth, sprite_out_depth;
 
-	wire [2*COLOR_BITS-1:0] curr_sprite_pixels = sprite_pixels[curr_sprite_buf];
+	wire [2*COLOR_BITS-1:0] curr_sprite_pixels = sprite_pixels[curr_sprite_buf][2*COLOR_BITS-1:0];
 	// TODO: share sprite id multiplexer?
 
 	wire sprite_try_catch_up = try_catch_up[curr_sprite_buf];
@@ -709,7 +711,7 @@ module sprite_unit #(
 
 	// The last sprite id will always be behind everything except the background color
 	// if curr_prio is used to check if we had a sprite hit
-	wire [ID_BITS+EXTRA_ID_BITS-1:0] curr_prio  = sprite_hit ? sprite_id : '1;
+	wire [ID_BITS+EXTRA_ID_BITS-1:0] curr_prio  = sprite_hit ? {1'b0, sprite_id} : '1; // assumes EXTRA_ID_BITS = 1
 	wire [1:0] curr_depth                       = sprite_hit ? sprite_depth : '1;
 	wire [FULL_COLOR_BITS-1:0]       curr_color = sprite_hit ? curr_sprite_color : '0; // TODO: other default color?
 
@@ -802,7 +804,7 @@ module read_coordinator #( parameter NUM_LEVELS=8, DATA_DELAY=4 )
 endmodule
 
 module copper #(
-		parameter ADDR_PINS=4, DATA_PINS=4, ADDR_BITS=15, WADDR_BITS=7, WADDR_BITS_USED=7, WDATA_BITS=9,
+		parameter ADDR_PINS=4, DATA_PINS=4, ADDR_BITS=16, WADDR_BITS=7, WADDR_BITS_USED=7, WDATA_BITS=9,
 		DATA_DELAY=4,
 		X_CMP_BITS=9, Y_CMP_BITS=9, REG_ADDR_CMP=0,
 		LOG2_NUM_LEVELS=1, BASE_LEVEL=1
@@ -858,7 +860,7 @@ module copper #(
 	//assign wdata[WDATA_BITS-1 -: 4] = store[15:12];
 
 	reg [ADDR_BITS-1:0] addr_reg;
-	wire [15:0] addr = {start_addr[15:ADDR_BITS], addr_reg};
+	wire [15:0] addr = addr_reg;
 	assign addr_pins = addr[serial_counter*ADDR_PINS + ADDR_PINS-1 -: ADDR_PINS];
 
 	// Update store_valid at serial_counter == 3
@@ -867,17 +869,17 @@ module copper #(
 	wire delta_addr = grant && (serial_counter == 3);
 	always @(posedge clk) begin
 		if (reset || restart) begin
-			addr_reg <= start_addr;
+			addr_reg <= start_addr[ADDR_BITS-1:0];
 			if (serial_counter == 3 || reset) begin // Assumes that restart will be high when serial_counter = 3
 				on <= 1; // TODO: Don't turn on at reset
 				store_valid <= 0;
 			end
 		end else begin
-			if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] == 3'b11)) begin
+			if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] == 2'b11)) begin
 				// Jump, prepare by writing cmp without activating compare
 				addr_reg <= {wdata[WDATA_BITS-1 -: 8], cmp[WDATA_BITS-1 -: 8]};
 			end else begin
-				addr_reg <= addr_reg + delta_addr;
+				addr_reg <= addr_reg + {{(ADDR_BITS-1){1'b0}}, delta_addr};
 			end
 
 			// Turn off if there is a write to the highest register number
@@ -908,9 +910,10 @@ module copper #(
 	//     REG_ADDR_CMP + 1: cmp_y
 	//     REG_ADDR_CMP + 2: just write cmp
 	// ....REG_ADDR_CMP + 3: jump (don't write cmp)
-	wire cmp_waddr_match = waddr[WADDR_BITS_USED-1:2] == REG_ADDR_CMP>>2;
+	wire [31:0] reg_addr_cmp = REG_ADDR_CMP;
+	wire cmp_waddr_match = waddr[WADDR_BITS_USED-1:2] == reg_addr_cmp[WADDR_BITS_USED-1:2];
 	always @(posedge clk) begin
-		if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] != 3'b11)) begin
+		if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] != 2'b11)) begin
 			cmp <= wdata;
 		end
 		if (reset || restart) cmp_on <= 0;
@@ -1152,7 +1155,7 @@ module tilemap_unit #(
 	wire [ATTR_BITS-1:0] top_attr = attr[top_plane];
 	wire [1:0] pal;
 	wire tile_2bpp;
-	assign {pal, tile_2bpp} = top_attr;
+	assign {pal, tile_2bpp} = top_attr[2:0];
 
 	wire [3:0] curr_pixels = top_plane == 1 ? pixels1 : pixels0;
 	wire [COLOR_BITS-1:0] curr_color_2bpp_0 = plane_odd ? curr_pixels[3:2] : curr_pixels[1:0];
@@ -1180,8 +1183,8 @@ module ditherer (
 		output wire [1:0] y
 	);
 
-	wire [3:0] x = (u < 2) ? u : ((u - 1) << 1);
-	wire [3:0] x2 = x + dither;
+	wire [3:0] x = (u < 2) ? {1'b0, u} : {(u - 3'd1), 1'b0};
+	wire [3:0] x2 = x + {2'b0, dither};
 	assign y = x2[3:2];
 endmodule
 
@@ -1405,9 +1408,9 @@ module PPU #(
 
 	always @(posedge clk) begin
 		if (serial_counter == 3) begin
-			rgb_out_reg[11:8] <= pal_out[7:5] << 1; // r
-			rgb_out_reg[ 7:4] <= pal_out[4:2] << 1; // g
-			rgb_out_reg[ 3:0] <= {pal_out[1:0], pal_out[5]} << 1; // b
+			rgb_out_reg[11:8] <= {pal_out[7:5], 1'b0}; // r
+			rgb_out_reg[ 7:4] <= {pal_out[4:2], 1'b0}; // g
+			rgb_out_reg[ 3:0] <= {pal_out[1:0], pal_out[5], 1'b0}; // b
 		end
 	end
 
@@ -1424,7 +1427,7 @@ module PPU #(
 
 	wire [PAL_PIECE_BITS-1:0] pal_wdata;
 
-	wire [PAL_PIECE_BITS-1:0] pal_data_out = pal[pal_addr];
+	wire [PAL_PIECE_BITS-1:0] pal_data_out = pal[pal_addr][PAL_PIECE_BITS-1:0];
 	wire [PAL_PIECE_BITS-1:0] pal_data_in = pal_wen ? pal_wdata : pal_data_out;
 	always @(posedge clk) begin
 		pal_temp <= {pal_data_out, pal_temp[PAL_BITS-1:PAL_PIECE_BITS]};
@@ -1465,7 +1468,8 @@ module PPU #(
 
 	// Don't load tile data unless active or just before (so that it will show up)
 	// CONSIDER: Don't load tile data during the last 8 pixels, as it won't have time to show?
-	wire load_planes_scan = scan_flags0[`I_ACTIVE_OR_BP] && (x[X_BITS-1:TILE_X_BITS+1] >= ((128-2*2**TILE_X_BITS)>>(TILE_X_BITS+1)));
+//	wire load_planes_scan = scan_flags0[`I_ACTIVE_OR_BP] && (x[X_BITS-1:TILE_X_BITS+1] >= ((128-2*2**TILE_X_BITS)>>(TILE_X_BITS+1)));
+	wire load_planes_scan = scan_flags0[`I_ACTIVE_OR_BP] && ({3'd0, x[X_BITS-1:TILE_X_BITS+1]} >= ((128-2*2**TILE_X_BITS)>>(TILE_X_BITS+1)));
 
 	// Assumes MAP_X_BITS+TILE_X_BITS >= MAP_Y_BITS+TILE_Y_BITS
 	reg [MAP_X_BITS+TILE_X_BITS-1:0] scroll_regs[4];
@@ -1554,8 +1558,8 @@ module PPU #(
 	endgenerate
 
 	// Base address registers
-	wire [15:0] sorted_base_addr = {base_addr_regs[0], 6'd0};
-	wire [15:0] oam_base_addr    = {base_addr_regs[1], 7'd0};
+	wire [15:0] sorted_base_addr = {{(16-BASE_ADDR_REG_BITS-6){1'b0}}, base_addr_regs[0], 6'd0};
+	wire [15:0] oam_base_addr    = {{(16-BASE_ADDR_REG_BITS-7){1'b0}}, base_addr_regs[1], 7'd0};
 
 	reg [BASE_ADDR_REG_BITS-1:0] base_addr_regs[NUM_BASE_ADDR_REGS];
 	generate
@@ -1631,10 +1635,10 @@ module PPU #(
 	//wire hsync_polarity = 0, vsync_polarity = 0;
 
 
-
+	/*
 	reg [7:0] count; // Debug counter, not used
 	always @(posedge clk) count <= count + new_frame;
-
+	*/
 
 	// Write palette
 	assign pal_waddr = reg_waddr[PAL_ADDR_BITS-1:0];

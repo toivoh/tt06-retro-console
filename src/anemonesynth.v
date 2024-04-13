@@ -185,7 +185,8 @@ module subsamp_voice #(
 	wire [SWEEP_DIVIDER_BITS-1:0] next_sweep_oct_counter = sweep_oct_counter + 1;
 	wire [SWEEP_DIVIDER_BITS:0] sweep_oct_enables;
 	assign sweep_oct_enables[0] = '1;
-	assign sweep_oct_enables[SWEEP_DIVIDER_BITS-1:1] = next_sweep_oct_counter & ~sweep_oct_counter; // Could optimize sweep_oct_enables[1] to just next_sweep_oct_counter[0]
+	wire [SWEEP_DIVIDER_BITS-1:0] swoe = next_sweep_oct_counter & ~sweep_oct_counter;
+	assign sweep_oct_enables[SWEEP_DIVIDER_BITS-1:1] = swoe[SWEEP_DIVIDER_BITS-2:0]; // Could optimize sweep_oct_enables[1] to just next_sweep_oct_counter[0]
 	assign sweep_oct_enables[SWEEP_DIVIDER_BITS] = 0;
 
 	// Create osc_oct_enables with msb always zero.
@@ -194,7 +195,7 @@ module subsamp_voice #(
 	assign osc_oct_enables[2**OCT_BITS-2:0] = oct_enables[2**OCT_BITS-2:0];
 	assign osc_oct_enables[2**OCT_BITS-1] = 0; // Make slowest octave = oscillator off. TODO: can sub-oscillator be slow enough?
 
-	wire step_enable = osc_enable && osc_oct_enables[oct];
+	wire step_enable = (osc_enable != '0) && osc_oct_enables[oct];
 
 	// NB: Only works for up to two oscillators. But we're not expecting to use more.
 	wire osc_index = osc_enable[1];
@@ -217,7 +218,7 @@ module subsamp_voice #(
 	wire [STEP_EXP_BITS-1:0] step_exp = step_exp0[OCT_BITS] ? 0 : step_exp0[STEP_EXP_BITS-1:0];
 	wire [SUBSAMP_BITS-1:0] step_mask = ((2**SUBSAMP_BITS - 1) << step_exp) >> SUBSAMP_BITS; // CONSIDER: Better way to compute?
 	//wire [SUBSAMP_BITS:0] phase_step = 1 << step_exp; // CONSIDER: Better way to compute?
-	wire [SUBSAMP_BITS:0] phase_step = ((step_mask << 1) | 1) & ~step_mask;
+	wire [SUBSAMP_BITS:0] phase_step = {step_mask << 1, 1'b1} & ~{1'b0, step_mask};
 
 
 	wire [PHASE_BITS-1:0] rev_phase0;
@@ -228,8 +229,8 @@ module subsamp_voice #(
 
 	wire update_phase = !(curr_delayed_p || delayed_s) && step_enable;
 	//wire [PHASE_BITS-1:0] phase_inc = (update_phase ? phase_step : 0);
-	wire [PHASE_BITS-1:0] phase_inc = phase_step;
-	wire sum_phases = !(|osc_enable);
+	wire [PHASE_BITS-1:0] phase_inc = {{(PHASE_BITS-(SUBSAMP_BITS+1)){1'b0}}, phase_step};
+	//wire sum_phases = !(|osc_enable);
 	wire wave_we = svf_we && (svf_step == 1);
 	//wire [PHASE_BITS-1:0] phase_term = sum_phases ? (invert_phase1 ? ~phase[1] : phase[1]) : phase_inc;
 	//wire [PHASE_BITS-1:0] phase_sum = curr_phase + phase_term;
@@ -243,12 +244,12 @@ module subsamp_voice #(
 
 	// Split mantissa
 	wire [PHASE_BITS-1:0] mantissa_p;
-	assign mantissa_p[SUBSAMP_BITS-1:0] = mantissa & ~step_mask;
+	assign mantissa_p[SUBSAMP_BITS-1:0] = mantissa[SUBSAMP_BITS-1:0] & ~step_mask;
 	assign mantissa_p[PHASE_BITS-1:SUBSAMP_BITS] = mantissa[PHASE_BITS-1:SUBSAMP_BITS];
 	wire [SUBSAMP_BITS-1:0] mantissa_sub = mantissa[SUBSAMP_BITS-1:0] & step_mask;
 
 	wire next_delayed_p = mantissa_p > rev_phase;
-	wire next_delayed_s = {mantissa_sub, {SUBSAMP_BITS{1'b0}}} > rev_phase; // CONSIDER: simplify logic for mantissa_sub comparison
+	wire next_delayed_s = {{(PHASE_BITS-2*SUBSAMP_BITS){1'b0}}, mantissa_sub, {SUBSAMP_BITS{1'b0}}} > rev_phase; // CONSIDER: simplify logic for mantissa_sub comparison
 
 	// valid when osc_enable[0] is high
 	wire phase_rollover = phase[0][PHASE_BITS-1] && !phase_sum1[PHASE_BITS-1];
@@ -284,7 +285,7 @@ module subsamp_voice #(
 
 	reg delayed_s_next;
 	reg [NUM_OSCS-1:0] delayed_p_next;
-	wire [MOD_MANTISSA_BITS-1:0] running_counter_next = phase_rollover ? 0 : running_counter + !delayed_s;
+	wire [MOD_MANTISSA_BITS-1:0] running_counter_next = phase_rollover ? 0 : running_counter + {{(MOD_MANTISSA_BITS-1){1'b0}}, !delayed_s};
 	wire [SVF_STATE_BITS-1:0] yv_next = shift_sum;
 	wire [FP_BITS-1:0] fp_next;
 	wire [MOD_BITS-1:0] mod_next;
@@ -567,7 +568,7 @@ module subsamp_voice #(
 	// ===========
 	wire acc_we = fir_enable && (term_index != 0);
 
-	wire [`TARGET_BITS-1:0] target_sel = acc_we ? `TARGET_ACC : `TARGET_NONE;
+//	wire [`TARGET_BITS-1:0] target_sel = acc_we ? `TARGET_ACC : `TARGET_NONE;
 	wire [`A_SEL_BITS-1:0] a_sel = svf_enable ? a_sel_svf : (restart_acc ? `A_SEL_ZERO : `A_SEL_ACC);
 //	wire [`B_SEL_BITS-1:0] b_sel = svf_enable ? b_sel_svf : `B_SEL_WAVE;
 	wire [`B_SEL_BITS-1:0] b_sel = svf_enable ? b_sel_svf : `B_SEL_Y;
@@ -627,7 +628,7 @@ module subsamp_voice #(
 			`A_SEL_V:    src_a = v;
 		endcase
 		case (b_sel_reg)
-			`B_SEL_WAVE: src_b = wave_reg << (SHIFTADD_BITS - WAVE_BITS);
+			`B_SEL_WAVE: src_b = {wave_reg, {(SHIFTADD_BITS - WAVE_BITS){1'b0}}};
 			`B_SEL_Y:    src_b = y;
 			`B_SEL_V:    src_b = v;
 		endcase
@@ -639,7 +640,8 @@ module subsamp_voice #(
 	wire signed [SHIFTADD_BITS+1-1:0] shifter_out = zero_shifter_out_reg ? 0 : (shifter_in >>> rshift_reg);
 	wire shifter_out_sign = shifter_out[SHIFTADD_BITS+1-1];
 
-	wire signed [SHIFTADD_BITS-1:0] shift_sum0 = ($signed({src_a, 1'b1}) + shifter_out) >> 1;
+	wire signed [SHIFTADD_BITS:0] shift_sum00 = ($signed({src_a, 1'b1}) + shifter_out);
+	wire signed [SHIFTADD_BITS-1:0] shift_sum0 = shift_sum00[SHIFTADD_BITS:1];
 	wire shift_sum0_sign = shift_sum0[SHIFTADD_BITS-1];
 
 	// Saturate shift adder output
@@ -679,7 +681,7 @@ module subsamp_voice #(
 	endgenerate
 
 	wire [RSHIFT_BITS-1:0] rshift_base_svf = curr_mod_oct;
-	wire [RSHIFT_BITS-1:0] rshift_offs_svf = (curr_mod_mantissa > rev_rc) + (svf_step == 1 ? rshift_wfvol : 0);
+	wire [RSHIFT_BITS-1:0] rshift_offs_svf = {{(RSHIFT_BITS-1){1'b0}}, (curr_mod_mantissa > rev_rc)} + (svf_step == 1 ? rshift_wfvol : 0);
 
 
 	// Waveform generator
@@ -724,11 +726,13 @@ module subsamp_voice #(
 		end
 	endgenerate
 
+	/*
 	reg [7:0] dbg_scan_accs_counter;
 	always @(posedge clk) begin
 		if (reset) dbg_scan_accs_counter <= 0;
 		else dbg_scan_accs_counter <= dbg_scan_accs_counter + scan_accs_reg;
 	end
+	*/
 
 	localparam WAVE_BITS = PHASE_BITS;
 	localparam RSHIFT_BITS = 4; //$clog2(WAVE_BITS); // TODO: enough?
@@ -792,7 +796,7 @@ module subsamp_voice #(
 		if (reset || coeff_done) begin
 			term_index <= 0;
 		end else begin
-			term_index <= term_index + fir_enable;
+			term_index <= term_index + {{(TERM_INDEX_BITS-1){1'b0}}, fir_enable};
 		end
 
 		// register FIR table outputs
@@ -808,7 +812,8 @@ module subsamp_voice #(
 	wire [FP_BITS-1:0] sweep_fp_fp = sweep_index[0] ? float_period[1] : float_period[0];
 	wire [MOD_BITS-1:0] sweep_mod = sweep_index[1] ? (sweep_index[0] ? mods[1] : mods[0]) : mods[2];
 	wire sweep_source_is_mod = sweep_index[2:1] != 0;
-	wire [FP_BITS-1:0] sweep_fp = sweep_source_is_mod ? sweep_mod << FP_MOD_DELTA_BITS: sweep_fp_fp;
+	//wire [FP_BITS-1:0] sweep_fp = sweep_source_is_mod ? sweep_mod << FP_MOD_DELTA_BITS: sweep_fp_fp;
+	wire [FP_BITS-1:0] sweep_fp = sweep_source_is_mod ? {sweep_mod[FP_BITS-FP_MOD_DELTA_BITS-1:0], {FP_MOD_DELTA_BITS{1'b0}}}: sweep_fp_fp;
 	wire [SWEEP_MANTISSA_BITS+1-1:0] sweep_fp_lsbs = sweep_source_is_mod ? sweep_mod[SWEEP_MANTISSA_BITS:0] : sweep_fp_fp[SWEEP_MANTISSA_BITS:0];
 
 	// Unpack sweep data
@@ -816,11 +821,11 @@ module subsamp_voice #(
 	wire [OCT_BITS-1:0] sweep_oct;
 	wire [SWEEP_MANTISSA_BITS-1:0] sweep_mantissa;
 	// TODO: Use msbs of rx_buffer to avoid flipflops for the lsbs
-	assign {sweep_sign, sweep_oct, sweep_mantissa} = rx_buffer;
+	assign {sweep_sign, sweep_oct, sweep_mantissa} = rx_buffer[1+OCT_BITS+SWEEP_MANTISSA_BITS-1:0];
 
 	wire sweep_nreplace;
 	wire [FP_BITS-1:0] sweep_replace_data;
-	assign {sweep_nreplace, sweep_replace_data} = rx_buffer;
+	assign {sweep_nreplace, sweep_replace_data} = rx_buffer[FP_BITS+1-1:0];
 	wire sweep_replace = !sweep_nreplace;
 
 	wire sweep_step = sweep_oct_enables[sweep_oct];
@@ -840,7 +845,7 @@ module subsamp_voice #(
 	wire [FP_BITS+1-1:0] sweep_sum = sweep_fp + sweep_delta;
 	wire sweep_sat = (sweep_sum[FP_BITS] != sweep_sign);
 
-	wire [FP_BITS-1:0] sweep_out = sweep_replace ? sweep_replace_data : sweep_sum;
+	wire [FP_BITS-1:0] sweep_out = sweep_replace ? sweep_replace_data : sweep_sum[FP_BITS-1:0];
 
 	assign fp_next  = sweep_out[FP_BITS-1:0];
 	assign mod_next = sweep_out[FP_BITS-1 -: MOD_BITS];
@@ -919,7 +924,7 @@ module subsamp_voice_controller #(
 
 
 	localparam WORD_SIZE = PAYLOAD_CYCLES * IO_BITS;
-	localparam STATE_BITS = WORD_SIZE * STATE_WORDS;
+	//localparam STATE_BITS = WORD_SIZE * STATE_WORDS;
 
 	localparam INDEX_BITS = $clog2(STATE_WORDS + 1); // One extra so that '1 can mean idle
 
@@ -941,12 +946,12 @@ module subsamp_voice_controller #(
 	wire inc_voice = step && (counter == COUNTER_CYCLES - 1) && scan_done;
 	wire inc_sample = osc_enable[0] && sample_done;
 
-	wire [LOG2_NUM_SAMPLES_PER_VOICE+1-1:0] next_sample_counter = sample_counter + inc_sample;
+	wire [LOG2_NUM_SAMPLES_PER_VOICE+1-1:0] next_sample_counter = sample_counter + {{(LOG2_NUM_SAMPLES_PER_VOICE){1'b0}}, inc_sample};
 	wire restart_without_switch = osc_enable[0] && !next_sample_counter[LOG2_NUM_SAMPLES_PER_VOICE];
 
 	wire restart_counter = inc_voice || restart_without_switch;
 
-	wire [LOG2_NUM_VOICES+1-1:0] next_voice = curr_voice + inc_voice;
+	wire [LOG2_NUM_VOICES+1-1:0] next_voice = curr_voice + {{(LOG2_NUM_VOICES){1'b0}}, inc_voice};
 
 	always @(posedge clk) begin
 		if (reset) begin
@@ -961,9 +966,10 @@ module subsamp_voice_controller #(
 			end else begin
 				counter <= counter + 1;
 			end
-			//curr_voice <= next_voice[LOG2_NUM_VOICES-1:0];
-			curr_voice <= next_voice & (2**LOG2_NUM_VOICES - 1);
-			sample_counter <= next_sample_counter & (2**LOG2_NUM_SAMPLES_PER_VOICE - 1);
+			curr_voice <= next_voice[LOG2_NUM_VOICES-1:0];
+			//curr_voice <= next_voice & (2**LOG2_NUM_VOICES - 1);
+			//sample_counter <= next_sample_counter & (2**LOG2_NUM_SAMPLES_PER_VOICE - 1);
+			sample_counter <= next_sample_counter[LOG2_NUM_SAMPLES_PER_VOICE-1:0];
 		end
 	end
 	// Should activate once when curr_voice rolls over to zero.
@@ -1045,7 +1051,7 @@ module subsamp_voice_controller #(
 	reg [SWEEP_INDEX_BITS-1:0] sweep_addr_index;
 	wire sending_sweep_addrs = (sweep_addr_index != NUM_SWEEPS);
 
-	wire [WORD_SIZE-1:0] tx_read_addr = {curr_voice, sweep_addr_index};
+	wire [WORD_SIZE-1:0] tx_read_addr = {{(WORD_SIZE-LOG2_NUM_VOICES-SWEEP_INDEX_BITS){1'b0}}, {curr_voice, sweep_addr_index}};
 
 	reg [SWEEP_INDEX_BITS-1:0] sweep_data_index;
 	wire awaiting_sweep_data = (sweep_data_index != NUM_SWEEPS);
@@ -1063,8 +1069,8 @@ module subsamp_voice_controller #(
 				sweep_addr_index <= 0;
 				sweep_data_index <= 0;
 			end else begin
-				sweep_addr_index <= sweep_addr_index + tx_done_addr;
-				sweep_data_index <= sweep_data_index + sweep_data_valid;
+				sweep_addr_index <= sweep_addr_index + {{(SWEEP_INDEX_BITS-1){1'b0}}, tx_done_addr};
+				sweep_data_index <= sweep_data_index + {{(SWEEP_INDEX_BITS-1){1'b0}}, sweep_data_valid};
 			end
 		end
 	end
@@ -1076,7 +1082,7 @@ module subsamp_voice_controller #(
 	wire reg_we = regwrite_data_valid;
 	wire [`REG_ADDR_BITS-1:0] reg_waddr;
 	wire [7:0] reg_wdata;
-	assign {reg_waddr, reg_wdata} = rx_buffer;
+	assign {reg_waddr, reg_wdata} = rx_buffer[`REG_ADDR_BITS+8-1:0];
 
 	reg [SAMPLE_CREDIT_BITS-1:0] sample_credits;
 	wire have_sample_credits = (sample_credits != 0);
@@ -1091,10 +1097,10 @@ module subsamp_voice_controller #(
 			sbio_credits <= 1;
 			ppu_ctrl_reg <= `PPU_CTRL_INITIAL;
 		end else begin
-			if (reg_we && (reg_waddr == `REG_ADDR_SAMPLE_CREDITS)) sample_credits <= reg_wdata;
+			if (reg_we && (reg_waddr == `REG_ADDR_SAMPLE_CREDITS)) sample_credits <= reg_wdata[SAMPLE_CREDIT_BITS-1:0];
 			else sample_credits <= sample_credits - out_valid;
 
-			if (reg_we && (reg_waddr == `REG_ADDR_SBIO_CREDITS)) sbio_credits <= reg_wdata;
+			if (reg_we && (reg_waddr == `REG_ADDR_SBIO_CREDITS)) sbio_credits <= reg_wdata[SBIO_CREDIT_BITS-1:0];
 			if (reg_we && (reg_waddr == `REG_ADDR_PPU_CTRL)) ppu_ctrl_reg <= reg_wdata;
 		end
 	end
@@ -1109,8 +1115,8 @@ module subsamp_voice_controller #(
 
 	reg [INDEX_BITS-1:0] read_index_reg, write_index_reg;
 
-	wire [INDEX_BITS-1:0] next_read_index_reg  = read_index_reg  + tx_done_reading;
-	wire [INDEX_BITS-1:0] next_write_index_reg = write_index_reg + rx_done_writing;
+	wire [INDEX_BITS-1:0] next_read_index_reg  = read_index_reg  + {{(INDEX_BITS-1){1'b0}}, tx_done_reading};
+	wire [INDEX_BITS-1:0] next_write_index_reg = write_index_reg + {{(INDEX_BITS-1){1'b0}}, rx_done_writing};
 
 	wire scan_out_done = tx_done_reading && (read_index_reg  == STATE_WORDS - 1);
 	wire scan_done     = rx_done_writing && (write_index_reg == STATE_WORDS - 1);
@@ -1139,7 +1145,11 @@ module subsamp_voice_controller #(
 	wire tx_active; //, tx_started;
 	wire [SBIO_COUNTER_BITS-1:0] tx_counter;
 	wire tx_done;
-	sbio_monitor #(.IO_BITS(IO_BITS), .SENS_BITS(1), .COUNTER_BITS(SBIO_COUNTER_BITS), .INACTIVE_COUNTER_VALUE(2**SBIO_COUNTER_BITS-2)) sbio_tx (
+	sbio_monitor #(
+		.IO_BITS(IO_BITS), .SENS_BITS(1), .COUNTER_BITS(SBIO_COUNTER_BITS),
+		//.INACTIVE_COUNTER_VALUE(2**SBIO_COUNTER_BITS-2)
+		.INACTIVE_COUNTER_VALUE({{(SBIO_COUNTER_BITS-1){1'b1}}, 1'b0}) // = 2**SBIO_COUNTER_BITS-2
+	) sbio_tx (
 		.clk(clk), .reset(reset),
 		.pins(tx_pins),
 		//.start(tx_started), // Not needed, we should know when we start it
@@ -1179,11 +1189,13 @@ module subsamp_voice_controller #(
 	wire tx_done_out     = tx_done && (tx_source == `TX_SOURCE_OUT);
 	wire tx_done_addr    = tx_done && (tx_source == `TX_SOURCE_READ);
 
+	wire signed [1:0] sbio_credot_diff0 = {1'b0, sbio_credit_out} - {1'b0, sbio_credit_back};
+	wire signed [SBIO_CREDIT_BITS-1:0] sbio_credot_diff = {{(SBIO_CREDIT_BITS-2){sbio_credot_diff0[1]}}, sbio_credot_diff0};
 	always @(posedge clk) begin
 		if (reset) begin
 			tx_outstanding <= 0;
 		end else begin
-			tx_outstanding <= tx_outstanding - sbio_credit_back + sbio_credit_out;
+			tx_outstanding <= tx_outstanding + sbio_credot_diff;
 		end
 	end
 
@@ -1192,7 +1204,11 @@ module subsamp_voice_controller #(
 	wire rx_started, rx_active;
 	wire [SBIO_COUNTER_BITS-1:0] rx_counter;
 	wire rx_done;
-	sbio_monitor #(.IO_BITS(IO_BITS), .SENS_BITS(2), .COUNTER_BITS(SBIO_COUNTER_BITS), .INACTIVE_COUNTER_VALUE(2**SBIO_COUNTER_BITS-1)) sbio_rx (
+	sbio_monitor #(
+		.IO_BITS(IO_BITS), .SENS_BITS(2), .COUNTER_BITS(SBIO_COUNTER_BITS),
+		//.INACTIVE_COUNTER_VALUE(2**SBIO_COUNTER_BITS-1)
+		.INACTIVE_COUNTER_VALUE({SBIO_COUNTER_BITS{1'b1}}) // = 2**SBIO_COUNTER_BITS-1
+	) sbio_rx (
 		.clk(clk), .reset(reset),
 		.pins(rx_pins),
 		.start(rx_started), .active(rx_active), .done(rx_done), .counter(rx_counter)

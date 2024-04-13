@@ -211,6 +211,7 @@ async def test_ppu(dut):
 	cocotb.start_soon(clock.start())
 
 	preserved = True
+	#preserved = False
 	try:
 		ram = dut.extram.ram
 	except AttributeError:
@@ -402,7 +403,7 @@ async def test_ppu(dut):
 						if data_p != "x": dut.ui_in.value = int(data_p)
 
 						assert addr_p == "x" or str(int(addr)) == addr_p
-						#assert vga_p == "x" or vga  == vga_p
+						assert vga_p == "x" or vga  == vga_p
 
 
 					await ClockCycles(dut.clk, 1)

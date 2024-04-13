@@ -15,7 +15,7 @@ echo
 echo "Utilization"
 echo "==========="
 echo "## 7-global.log"
-grep Util runs/wokwi/logs/placement/7-global.log
+grep Util runs/wokwi/logs/placement/6-global.log
 echo
 echo "## 21-grt_sta.log"
 grep utilization runs/wokwi/logs/routing/21-grt_sta.log

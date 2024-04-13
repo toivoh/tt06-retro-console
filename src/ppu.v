@@ -201,7 +201,8 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 		scan_flags <= scan_flags0;
 `endif
 
-		if (last_hsync) vsync0 <= (phase_y == PHASE_SYNC);
+		if (reset) vsync0 <= 0;
+		else if (last_hsync) vsync0 <= (phase_y == PHASE_SYNC);
 	end
 endmodule
 
@@ -653,7 +654,7 @@ module sprite_unit #(
 
 				//if (reset || restart) valid_sprites[i] <= 0;
 				// Don't reset valid_sprites until the last serial cycle, should allow restart to be high for the last visible pixel?
-				if ((reset || restart) && last_serial_cycle) valid_sprites[i] <= 0;
+				if (reset || (restart && last_serial_cycle)) valid_sprites[i] <= 0;
 				// Sets the valid flag slightly too soon, but it shouldn't be used until the sprite is actually valid?
 				else if (pix_pos_hit && final_pixels_in) valid_sprites[i] <= 1;
 				else if (curr_sprite_match && x_after) valid_sprites[i] <= 0;
@@ -1417,7 +1418,11 @@ module PPU #(
 		end
 	end
 
-	wire [PAL_ADDR_BITS-1:0] pal_raddr = pixel_out;
+	// Gate pal_raddr outside the active region to make it possibe for gate level tests to work.
+	// Getting an X into pal_addr can make the entire palette contents into X.
+	// (active || scan_flags[`I_ACTIVE]) is a slight overapproximation of the region where pal_raddr needs to be valid,
+	// but seems to work ok for the GL tests.
+	wire [PAL_ADDR_BITS-1:0] pal_raddr = (active || scan_flags[`I_ACTIVE]) ? pixel_out : '0;
 	wire [PAL_ADDR_BITS-1:0] pal_waddr;
 	//wire [PAL_ADDR_BITS-1:0] pal_addr = pal_wen ? pal_waddr : pal_raddr;
 

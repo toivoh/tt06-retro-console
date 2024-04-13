@@ -1,0 +1,51 @@
+[*]
+[*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
+[*] Sat Apr 13 08:44:59 2024
+[*]
+[dumpfile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb.vcd"
+[dumpfile_mtime] "Sat Apr 13 08:40:24 2024"
+[dumpfile_size] 3909232
+[savefile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb_rasterscan.gtkw"
+[timestart] 116440000
+[size] 1463 1070
+[pos] -1 -1
+*-23.000000 142690000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] tb.
+[treeopen] tb.dut.
+[treeopen] tb.dut.ppu.
+[treeopen] tb.dut.ppu.rs2.
+[sst_width] 297
+[signals_width] 134
+[sst_expanded] 1
+[sst_vpaned_height] 322
+@28
+tb.rst_n
+tb.clk
+@420
+tb.counter
+@28
+tb.dut.ppu.rs2.vsync0
+@200
+-x_scan
+@28
+tb.dut.ppu.rs2.x_scan.phase
+@22
+tb.dut.ppu.rs2.x_scan.counter[8:0]
+@200
+-y_scan
+@28
+tb.dut.ppu.rs2.y_scan.phase[1:0]
+@22
+tb.dut.ppu.rs2.y_scan.counter[8:0]
+@200
+-
+@22
+tb.dut.ppu.gfxmode1[8:0]
+tb.dut.ppu.gfxmode2[8:0]
+tb.dut.ppu.gfxmode3[8:0]
+@200
+-
+@23
+tb.uo_out[7:0]
+[pattern_trace] 1
+[pattern_trace] 0

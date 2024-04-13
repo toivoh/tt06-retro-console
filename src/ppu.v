@@ -143,7 +143,7 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 `endif
 
 	wire phase_x;
-	//wire new_line0, 
+	wire new_line0, last_pixel0, last_pixel_group0;
 	wire last_hsync;
 	axis_scan_x #(.BITS(X_BITS)) x_scan(
 		.clk(clk), .reset(reset),  .enable(enable),
@@ -152,12 +152,15 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 		.initials({x0_bp, x0_fp}), .compares({xe_active, xe_hsync}),
 
 		.phase(phase_x), .counter(x0),
-		.new_line(scan_flags0[`I_NEW_LINE]), .last_pixel(scan_flags0[`I_LAST_PIXEL]), .last_hsync(last_hsync),
-		.h_active_end(scan_flags0[`I_LAST_PIXEL_GROUP])
+		.new_line(new_line0), .last_pixel(last_pixel0), .last_hsync(last_hsync),
+		.h_active_end(last_pixel_group0)
 	);
 	//assign new_line0 = enable && phase_x == PHASE_SYNC && x0 == 0;
 	assign x_cmp = {x0[X_BITS-1:7], x0[6:5] - 2'd3, x0[4:0]};
 
+	assign scan_flags0[`I_NEW_LINE] = new_line0;
+	assign scan_flags0[`I_LAST_PIXEL] = last_pixel0;
+	assign scan_flags0[`I_LAST_PIXEL_GROUP] = last_pixel_group0;
 
 	wire [PHASE_BITS-1:0] phase_y;
 	wire [Y_SCAN_BITS-1:0] yc0;
@@ -178,7 +181,7 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 	wire subphase0 = |x0[X_BITS-1 -: X_SUBPHASE_BITS];
 
 
-	assign scan_flags0[`I_NEW_FRAME] = scan_flags0[`I_NEW_LINE] && phase_y == PHASE_SYNC && yc0 == 0; // TODO: correct?
+	assign scan_flags0[`I_NEW_FRAME] = new_line0 && phase_y == PHASE_SYNC && yc0 == 0; // TODO: correct?
 
 	wire h_active = (phase_x == 1 && subphase0 == 1);
 	wire v_active = (phase_y == PHASE_ACTIVE);

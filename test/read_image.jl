@@ -1,5 +1,6 @@
 using DelimitedFiles
 using ImageView
+using ColorTypes
 using Test
 
 data = readdlm("vga-data.txt", Int)

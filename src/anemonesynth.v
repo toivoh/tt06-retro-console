@@ -54,8 +54,17 @@ endmodule
 `define MOD_SEL_VOL    2'd2
 `define MOD_SEL_FIR    2'd3
 
+// Input injection into enabled y is enabled if topology[0] == 1
+`define TOPOLOGY_SVF2           2'd0
+`define TOPOLOGY_SVF2_TRANSPOSE 2'd1
+`define TOPOLOGY_SVF2_2VOL      2'd2
+`define TOPOLOGY_2X_LPF1        2'd3
+
 module SVF_controller (
 		input wire [`SVF_STEP_BITS-1:0] step,
+		input wire [1:0] topology,
+		input wire [1:0] wf_index,
+		input wire bpf_en,
 		input wire en,
 
 		output reg [`A_SEL_BITS-1:0] a_sel,
@@ -63,6 +72,8 @@ module SVF_controller (
 		output reg [`MOD_SEL_BITS-1:0] mod_sel,
 		output reg b_sign, we, target_v
 	);
+
+	wire _bpf_en = bpf_en && topology[0];
 
 	always @(*) begin
 		we = 0;
@@ -72,37 +83,86 @@ module SVF_controller (
 		b_sign = 1'bX;
 		target_v = 1'bX;
 
-		// Non-transposed resonant filter
-		case (step)
-			2'd0: begin // v -= a_damp * v // step 0: can't change y
-				target_v = 1; we = en;
-				a_sel = `A_SEL_V;
-				b_sel = `B_SEL_V; b_sign = 1; mod_sel = `MOD_SEL_DAMP;
-			end
-			2'd1: begin // v += a_vol * u0_lpf // step 1: input (if input to y, must be run after step 2)
-				target_v = 1; we = en;
-				a_sel = `A_SEL_V;
-				b_sel = `B_SEL_WAVE; b_sign = 0; mod_sel = `MOD_SEL_VOL;
-			end
-			2'd2: begin // v -= a_cutoff * y   // step 2
-				target_v = 1; we = en;
-				a_sel = `A_SEL_V;
-				b_sel = `B_SEL_Y; b_sign = 1; mod_sel = `MOD_SEL_CUTOFF;
-			end
-			2'd3: begin // y += a_cutoff * v   // step 3: produces ouput in y
+		if (step == 2'd1) begin
+			if (_bpf_en) begin // y -= a_vol * u // step 1: input (must be run after step 2)
 				target_v = 0; we = en;
 				a_sel = `A_SEL_Y;
-				b_sel = `B_SEL_V; b_sign = 0; mod_sel = `MOD_SEL_CUTOFF;
+				b_sel = `B_SEL_WAVE; b_sign = 1; // TODO: best sign?
+			end else begin // v += a_vol * u0_lpf // step 1: input (if input to y, must be run after step 2)
+				target_v = 1; we = en;
+				a_sel = `A_SEL_V;
+				b_sel = `B_SEL_WAVE; b_sign = 0;
 			end
-
-			// Dual lpf1 filter
-			// v -= a_cutoff * v
-
-			// v += a_vol  * u_lpf2 // input,
-			// y += a_damp * u_lpf1 // input 2,
-
-			// y -= a_damp * y
-			// y += a_damp * v
+			mod_sel = (topology == `TOPOLOGY_SVF2_2VOL && wf_index[0]) ? `MOD_SEL_DAMP : `MOD_SEL_VOL;
+		end else case (topology)
+			`TOPOLOGY_SVF2: case (step) // Non-transposed resonant filter
+				2'd0: begin // v -= a_damp * v // step 0: can't change y
+					target_v = 1; we = en;
+					a_sel = `A_SEL_V;
+					b_sel = `B_SEL_V; b_sign = 1; mod_sel = `MOD_SEL_DAMP;
+				end
+				2'd2: begin // v -= a_cutoff * y   // step 2
+					target_v = 1; we = en;
+					a_sel = `A_SEL_V;
+					b_sel = `B_SEL_Y; b_sign = 1; mod_sel = `MOD_SEL_CUTOFF;
+				end
+				2'd3: begin // y += a_cutoff * v   // step 3: produces output in y
+					target_v = 0; we = en;
+					a_sel = `A_SEL_Y;
+					b_sel = `B_SEL_V; b_sign = 0; mod_sel = `MOD_SEL_CUTOFF;
+				end
+			endcase
+			`TOPOLOGY_SVF2_TRANSPOSE: case (step) // Transposed resonant filter
+				2'd0: begin // v -= a_cutoff * y   // step 0: can't change y
+					target_v = 1; we = en;
+					a_sel = `A_SEL_V;
+					b_sel = `B_SEL_Y; b_sign = 1; mod_sel = `MOD_SEL_CUTOFF;
+				end
+				2'd2: begin // y -= a_damp * y // step 2
+					target_v = 0; we = en;
+					a_sel = `A_SEL_Y;
+					b_sel = `B_SEL_Y; b_sign = 1; mod_sel = `MOD_SEL_DAMP;
+				end
+				2'd3: begin // y += a_cutoff * v   // step 3: produces output in y
+					target_v = 0; we = en;
+					a_sel = `A_SEL_Y;
+					b_sel = `B_SEL_V; b_sign = 0; mod_sel = `MOD_SEL_CUTOFF;
+				end
+			endcase
+			`TOPOLOGY_SVF2_2VOL: case (step) // Non-transposed resonant filter with 2 volumes instead of resonance
+				2'd0: begin // v -= a_cutoff * v // step 0: can't change y
+					target_v = 1; we = en;
+					a_sel = `A_SEL_V;
+					b_sel = `B_SEL_V; b_sign = 1; mod_sel = `MOD_SEL_CUTOFF;
+				end
+				2'd2: begin // v -= a_cutoff * y   // step 2
+					target_v = 1; we = en;
+					a_sel = `A_SEL_V;
+					b_sel = `B_SEL_Y; b_sign = 1; mod_sel = `MOD_SEL_CUTOFF;
+				end
+				2'd3: begin // y += a_cutoff * v   // step 3: produces output in y
+					target_v = 0; we = en;
+					a_sel = `A_SEL_Y;
+					b_sel = `B_SEL_V; b_sign = 0; mod_sel = `MOD_SEL_CUTOFF;
+				end
+			endcase
+			`TOPOLOGY_2X_LPF1: case (step) // Dual lpf1 filter
+				2'd0: begin // v -= a_cutoff * v // step 0: can't change y
+					target_v = 1; we = en;
+					a_sel = `A_SEL_V;
+					b_sel = `B_SEL_V; b_sign = 1; mod_sel = `MOD_SEL_CUTOFF;
+				end
+				2'd2: begin // y -= a_damp * y   // step 2
+					target_v = 0; we = en;
+					a_sel = `A_SEL_Y;
+					b_sel = `B_SEL_Y; b_sign = 1; mod_sel = `MOD_SEL_DAMP;
+				end
+				2'd3: begin // y += a_damp * v   // step 3: produces output in y
+					target_v = 0; we = en;
+					a_sel = `A_SEL_Y;
+					b_sel = `B_SEL_V; b_sign = 0; mod_sel = `MOD_SEL_DAMP;
+				end
+			endcase
 		endcase
 	end
 endmodule : SVF_controller
@@ -269,6 +329,8 @@ module subsamp_voice #(
 	wire lfsr_active = params[PARAM_BIT_LFSR] && osc_enable[1];
 
 	wire [PHASE_BITS-1:0] phase_next = lfsr_active ? lfsr_base_next : phase_sum1;
+	// phase1 is only written when phase_we[0] for hardsync
+	wire [PHASE_BITS-1:0] phase1_next = phase_we[0] ? {hardsync_phase, {(PHASE_BITS-RESET_PHASE_BITS){1'b0}}} : phase_next;
 	assign lfsr_extra_we = lfsr_active && update_phase;
 
 	// State updates
@@ -321,6 +383,9 @@ module subsamp_voice #(
 			if (osc_enable[0]) phase_we[0] = update_phase; // phase[0] <= phase_sum1;
 			if (osc_enable[1]) phase_we[1] = update_phase; // phase[1] <= phase_sum1;
 			if (osc_enable[0]) running_counter_we = 1; // running_counter <= phase_rollover ? 0 : running_counter + !delayed_s;
+
+			// Hard sync, since phase_we[0] is set, phase1_next is modified for reset
+			if (osc_enable[0] && update_phase && hardsync && phase_rollover) phase_we[1] = 1'b1;
 
 			if (target_reg == `TARGET_Y) y_we = 1;
 			if (target_reg == `TARGET_V) v_we = 1;
@@ -445,8 +510,29 @@ module subsamp_voice #(
 		end
 	endgenerate
 
+	localparam VPARAM_BIT_TOPOLOGY = 0;
+	localparam VPARAM_BIT_BPF = VPARAM_BIT_TOPOLOGY + 2;
+	localparam VPARAM_BIT_HARDSYNC = VPARAM_BIT_BPF + NUM_WFS;
+	localparam VPARAM_BIT_RESET_PHASE = VPARAM_BIT_HARDSYNC + 1;
+	localparam RESET_PHASE_BITS = 4;
+	localparam VPARAM_BIT_VOL = VPARAM_BIT_RESET_PHASE + RESET_PHASE_BITS;
+	localparam VOICE_VOL_BITS = 2;
+	localparam VPARAM_BITS = VPARAM_BIT_VOL + VOICE_VOL_BITS;
 
-	localparam USED_STATE_BITS = PARAM_TOP; // Must be highest top parameter
+	localparam VPARAM_TOP = PARAM_TOP + VPARAM_BITS;
+	wire [VPARAM_BITS-1:0] vparams = state[VPARAM_TOP-1 -: VPARAM_BITS];
+	reg [VPARAM_BITS-1:0] d_vparams = 0;
+
+	wire [1:0] topology;
+	wire [NUM_WFS-1:0] bpf_en;
+	wire hardsync;
+	wire [RESET_PHASE_BITS-1:0] hardsync_phase;
+	wire [VOICE_VOL_BITS-1:0] voice_vol;
+	assign {voice_vol, hardsync_phase, hardsync, bpf_en, topology} = vparams;
+
+
+
+	localparam USED_STATE_BITS = VPARAM_TOP; // Must be highest top parameter
 
 	// For testing
 	wire [STATE_BITS-1:0] ostate = {
@@ -476,7 +562,7 @@ module subsamp_voice #(
 
 		state_nx[PHASE0_TOP-1 -: PHASE_BITS] = phase_next;
 		state_we[PHASE0_TOP-1 -: PHASE_BITS] = phase_we[0] ? '1 : '0;
-		state_nx[PHASE1_TOP-1 -: PHASE_BITS] = phase_next;
+		state_nx[PHASE1_TOP-1 -: PHASE_BITS] = phase1_next;
 		state_we[PHASE1_TOP-1 -: PHASE_BITS] = phase_we[1] ? '1 : '0;
 
 		state_nx[LFSR_EXTRA_TOP-1 -: LFSR_EXTRA_BITS] = lfsr_extra_next;
@@ -576,7 +662,7 @@ module subsamp_voice #(
 
 	wire [RSHIFT_BITS-1:0] rshift_base = svf_enable ? rshift_base_svf : rshift_reg0;
 	//wire [RSHIFT_BITS-1:0] rshift_offs = svf_enable ? rshift_offs_svf : (delayed_s ? SUBSAMP_BITS : 0);
-	wire [RSHIFT_BITS-1:0] rshift_offs = (svf_enable ? rshift_offs_svf : 0) + (delayed_s ? SUBSAMP_BITS : 0);
+	wire [RSHIFT_BITS-1:0] rshift_offs = (svf_enable ? rshift_offs_svf : rshift_offs_fir) + (delayed_s ? SUBSAMP_BITS : 0);
 
 	// Add, clamp
 	wire [RSHIFT_BITS+1-1:0] rshift_ext = rshift_base + rshift_offs;
@@ -665,7 +751,7 @@ module subsamp_voice #(
 	wire [`MOD_SEL_BITS-1:0] mod_sel;
 	wire b_sign_svf, svf_we, svf_target_v;
 	SVF_controller svf_controller(
-		.step(svf_step), .en(svf_enable),
+		.step(svf_step), .topology(topology), .wf_index(wf_index), .bpf_en(bpf_en[wf_index]), .en(svf_enable),
 		.a_sel(a_sel_svf), .b_sel(b_sel_svf), .mod_sel(mod_sel),
 		.b_sign(b_sign_svf), .we(svf_we), .target_v(svf_target_v)
 	);
@@ -750,6 +836,7 @@ module subsamp_voice #(
 
 	wire [RSHIFT_BITS-1:0] rshift0;
 	reg [RSHIFT_BITS-1:0] rshift_reg0;
+	wire [RSHIFT_BITS-1:0] rshift_offs_fir = {{(RSHIFT_BITS - VOICE_VOL_BITS){1'b0}}, voice_vol};
 
 	reg [SUPERSAMP_BITS-1:0] fir_offset_msbs;
 	reg [SUBSAMP_BITS-1:0] d_fir_offset_lsbs;

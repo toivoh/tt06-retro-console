@@ -4,7 +4,7 @@
  */
 
 `define NUM_CONTEXT_CYCLES 130
-`define STATE_WORDS 11
+`define STATE_WORDS 12
 
 `define SVF_STEP_BITS 2
 `define LOG2_NUM_WFS  2

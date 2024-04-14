@@ -24,6 +24,17 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 	reg reset;
 	always @(posedge clk) reset <= !rst_n;
 
+	reg vblank_pending;
+	wire vblank_ack;
+	wire vblank_en = ppu_ctrl[`PPU_CTRL_BIT_SEND_EVENTS];
+	always @(posedge clk) begin
+		if (reset) begin
+			vblank_pending <= 0;
+		end else begin
+			vblank_pending <= vblank_en && ((vblank_pending && !vblank_ack) || (new_frame && !reset_ppu));
+		end
+	end
+
 	// Register all inputs and outputs, at least for now
 	reg [7:0] ui_in_reg, uio_in_reg, uo_out_reg, uio_out_reg;
 	wire [7:0] uo_out0, uio_out0;
@@ -42,7 +53,7 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 	anemonesynth_top #(.IO_BITS(IO_BITS)) synth(
 		.clk(clk), .reset(reset),
 		.tx_pins(tx_pins), .rx_pins(rx_pins),
-		.ppu_ctrl(ppu_ctrl)
+		.ppu_ctrl(ppu_ctrl), .ext_tx_request(vblank_pending), .ext_tx_ack(vblank_ack)
 	);
 
 	wire sync_data = ppu_ctrl[`PPU_CTRL_BIT_SYNC_DATA];
@@ -54,13 +65,13 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 	wire [RAM_PINS-1:0] addr_pins_out = reset_ppu ? data_pins : addr_pins; // Loopback data_pins -> addr_pins when the PPU is in reset
 
 	wire [11:0] rgb_out;
-	wire hsync, vsync, active;
+	wire hsync, vsync, active, new_frame;
 	PPU #(.RAM_PINS(RAM_PINS), .VPARAMS1(`VPARAMS_64_TEST)) ppu(
 		.clk(clk), .reset(reset_ppu),
 		.addr_pins(addr_pins), .data_pins(data_pins),
 		//.pixel_out(pixel_out),
 		.rgb_out(rgb_out),
-		.active(active),
+		.active(active), .new_frame(new_frame),
 		.hsync(hsync), .vsync(vsync)
 	);
 

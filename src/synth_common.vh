@@ -16,6 +16,9 @@
 `define TX_SOURCE_OUT  2'd1
 // Read address going out
 `define TX_SOURCE_READ 2'd2
+// Other data going out
+`define TX_SOURCE_EXT_OUT 2'd3
+
 
 // Scan data coming back
 `define RX_SB_SCAN  2'd1
@@ -30,6 +33,7 @@
 `define REG_ADDR_SBIO_CREDITS   4'd1
 `define REG_ADDR_PPU_CTRL       4'd2
 
-`define PPU_CTRL_BIT_RST_N     3'd0
-`define PPU_CTRL_BIT_SYNC_DATA 3'd1
-`define PPU_CTRL_INITIAL       8'b11
+`define PPU_CTRL_BIT_RST_N       3'd0
+`define PPU_CTRL_BIT_SYNC_DATA   3'd1
+`define PPU_CTRL_BIT_SEND_EVENTS 3'd2
+`define PPU_CTRL_INITIAL         8'b011

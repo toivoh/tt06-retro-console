@@ -992,7 +992,12 @@ module subsamp_voice_controller #(
 		output wire [IO_BITS-1:0] tx_pins,
 		input wire [IO_BITS-1:0] rx_pins,
 
-		output wire [7:0] ppu_ctrl
+		output wire [7:0] ppu_ctrl,
+
+		input wire ext_tx_request,
+		//input wire [IO_BITS-1:0] ext_tx_data,
+		//output wire ext_tx_scan, // ask for next data bits
+		output wire ext_tx_ack
 	);
 
 	localparam FIRST_FIR_COUNT = 0;
@@ -1253,8 +1258,11 @@ module subsamp_voice_controller #(
 	wire tx_start_out = out_reg_valid;
 	wire tx_start_read_sweep = sending_sweep_addrs;
 
-	wire tx_start = (tx_start_scan || tx_start_out || tx_start_read_sweep) && !tx_active && have_sbio_credits;
-	wire [`TX_SOURCE_BITS-1:0] next_tx_source = tx_start_out ? `TX_SOURCE_OUT : (tx_start_read_sweep ? `TX_SOURCE_READ : `TX_SOURCE_SCAN);
+	wire tx_start = !tx_active && (
+		((tx_start_scan || tx_start_read_sweep) && have_sbio_credits) ||
+		(tx_start_out || ext_tx_request));
+	wire [`TX_SOURCE_BITS-1:0] next_tx_source = ext_tx_request ? `TX_SOURCE_EXT_OUT : (
+		tx_start_out ? `TX_SOURCE_OUT : (tx_start_read_sweep ? `TX_SOURCE_READ : `TX_SOURCE_SCAN));
 	always @(posedge clk) if (tx_start) tx_source <= next_tx_source;
 
 	wire sbio_credit_out = tx_start && (next_tx_source == `TX_SOURCE_SCAN || next_tx_source == `TX_SOURCE_READ);
@@ -1269,12 +1277,14 @@ module subsamp_voice_controller #(
 	wire [IO_BITS-1:0] tx_read_addr_bits = tx_read_addr[tx_counter*IO_BITS+IO_BITS-1 -: IO_BITS];
 
 	// Choose tx data source
+	// TODO: Use external bits if tx_source == `TX_SOURCE_EXT_OUT
 	assign tx_pins = tx_start ? 1 : (!tx_active ? 0 : (tx_data ? (tx_source == `TX_SOURCE_READ ? tx_read_addr_bits : (tx_source == `TX_SOURCE_OUT ? out_reg[IO_BITS-1:0] : scan_out)) : tx_source));
 
 	assign tx_done = (tx_counter == PAYLOAD_CYCLES - 1);
 	wire tx_done_reading = tx_done && (tx_source == `TX_SOURCE_SCAN);
 	wire tx_done_out     = tx_done && (tx_source == `TX_SOURCE_OUT);
 	wire tx_done_addr    = tx_done && (tx_source == `TX_SOURCE_READ);
+	assign ext_tx_ack    = tx_done && (tx_source == `TX_SOURCE_EXT_OUT);
 
 	wire signed [1:0] sbio_credot_diff0 = {1'b0, sbio_credit_out} - {1'b0, sbio_credit_back};
 	wire signed [SBIO_CREDIT_BITS-1:0] sbio_credot_diff = {{(SBIO_CREDIT_BITS-2){sbio_credot_diff0[1]}}, sbio_credot_diff0};
@@ -1348,7 +1358,12 @@ module anemonesynth_top #(
 		output wire [IO_BITS-1:0] tx_pins,
 		input wire [IO_BITS-1:0] rx_pins,
 
-		output wire [7:0] ppu_ctrl
+		output wire [7:0] ppu_ctrl,
+
+		input wire ext_tx_request,
+		//input wire [IO_BITS-1:0] ext_tx_data,
+		//output wire ext_tx_scan, // ask for next data bits
+		output wire ext_tx_ack
 	);
 
 	localparam WORD_SIZE = PAYLOAD_CYCLES * IO_BITS;
@@ -1408,6 +1423,6 @@ module anemonesynth_top #(
 		.rx_buffer(rx_buffer), .sweep_data_valid(sweep_data_valid), .sweep_index(sweep_index),
 		.scan_in(scan_in), .scan_out(scan_out),
 		.tx_pins(tx_pins), .rx_pins(rx_pins),
-		.ppu_ctrl(ppu_ctrl)
+		.ppu_ctrl(ppu_ctrl), .ext_tx_request(ext_tx_request), .ext_tx_ack(ext_tx_ack)
 	);
 endmodule

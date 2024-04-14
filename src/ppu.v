@@ -1217,7 +1217,9 @@ module PPU #(
 
 		output wire [3:0] pixel_out, // No longer used
 		output wire [11:0] rgb_out,
-		output wire active, hsync, vsync,
+		output wire active, hsync, vsync, // synced with rgb_out
+
+		output wire new_frame, // high for one cycle, the frame begins at vblank
 
 		output wire [`NUM_SCAN_FLAGS-1:0] scan_flags0,
 		output reg [RAM_LOG2_CYCLES-1:0] serial_counter,
@@ -1544,7 +1546,7 @@ module PPU #(
 	wire [REG_ADDR_BITS-1:0] reg_waddr = reg_waddr_full[REG_ADDR_BITS-1:0];
 	wire [REG_SUB_ADDR_BITS-1:0] reg_sub_waddr = serial_counter;
 
-	wire new_frame = scan_flags[`I_NEW_FRAME];
+	assign new_frame = scan_flags[`I_NEW_FRAME];
 	wire [REG_WDATA_BITS-1:0] reg_wdata;
 	copper #(
 		.WADDR_BITS(REG_ADDR_BITS_FULL), .WADDR_BITS_USED(REG_ADDR_BITS), .WDATA_BITS(REG_WDATA_BITS),

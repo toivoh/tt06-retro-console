@@ -355,7 +355,9 @@ async def test_ppu(dut):
 					pal = p
 					d = abs(y % (2*dd) - dd) + abs(x % (2*dd) - dd)
 					index = d
-					ram[map_base_addr + x + 64*y].value = index | ((((pal&3) << 1) | use_2bpp) << map_tile_bits)
+					always_opaque = (x&1) & (y&1)
+					#ram[map_base_addr + x + 64*y].value = index | ((((pal&3) << 1) | use_2bpp) << map_tile_bits)
+					ram[map_base_addr + x + 64*y].value = index | (always_opaque << 11) | ((pal&3) << (map_tile_bits + 3))
 
 		# Sprite data
 		# -----------
@@ -371,7 +373,15 @@ async def test_ppu(dut):
 
 			ram[oam_base_addr + 2*i].value     = (ys&7) | (tile << 4)
 			# {sprite_depth, sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x;
-			ram[oam_base_addr + 2*i + 1].value = (xs&511) | 512 | 1024 | ((pal&3)<<11) | ((depth&3)<<13)
+			# ram[oam_base_addr + 2*i + 1].value = (xs&511) | 512 | 1024 | ((pal&3)<<11) | ((depth&3)<<13)
+			# {sprite_pal, sprite_always_opaque, sprite_depth, sprite_x} = sprite_attr_x;
+
+			pal = pal << 2
+			always_opaque = i in (2, 5)
+			if i in (1, 5): pal = 15
+			if i == 4: pal = 5
+
+			ram[oam_base_addr + 2*i + 1].value = (xs&511) | ((depth&3)<<9) | (always_opaque << 11) | ((pal&15)<<12)
 
 	dut.uio_in.value = 0
 	dut.ui_in.value = 0

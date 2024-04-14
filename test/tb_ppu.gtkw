@@ -1,34 +1,34 @@
 [*]
 [*] GTKWave Analyzer v3.4.0 (w)1999-2022 BSI
-[*] Fri Apr 12 12:49:31 2024
+[*] Sun Apr 14 11:58:26 2024
 [*]
 [dumpfile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb.vcd"
-[dumpfile_mtime] "Fri Apr 12 12:44:17 2024"
-[dumpfile_size] 3603608
+[dumpfile_mtime] "Sun Apr 14 11:53:43 2024"
+[dumpfile_size] 10754721
 [savefile] "/home/toivo/code/tinytapeout/tt06-retro-console/test/tb_ppu.gtkw"
-[timestart] 0
-[size] 2205 979
+[timestart] 2292800000
+[size] 2205 1254
 [pos] -1 -1
-*-23.000000 21050000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-24.000000 2350510000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] tb.
 [treeopen] tb.dut.
 [treeopen] tb.dut.ppu.
 [treeopen] tb.dut.ppu.rs2.
+[treeopen] tb.dut.ppu.tilemap.
+[treeopen] tb.dut.synth.
 [sst_width] 297
-[signals_width] 166
+[signals_width] 229
 [sst_expanded] 1
-[sst_vpaned_height] 290
+[sst_vpaned_height] 386
 @28
 tb.clk
 tb.dut.reset
-@29
 tb.rst_n
 @420
 tb.counter
 @22
 tb.dut.addr_pins[3:0]
 tb.addr_pins[3:0]
-tb.my_addr_pins[3:0]
 @800022
 tb.dut.uio_out[7:0]
 @28
@@ -98,5 +98,51 @@ tb.dut.ppu.vparams[35:0]
 @420
 tb.dut.ppu.VPARAMS
 tb.dut.ppu.VPARAMS1
+@200
+-
+@22
+tb.dut.ppu.y_cmp[8:0]
+@28
+tb.dut.ppu.active
+tb.dut.ppu.copper_inst.cmp_on
+@22
+tb.dut.ppu.tilemap.scroll_x0[8:0]
+tb.dut.ppu.tilemap.scroll_x1[8:0]
+@28
+tb.dut.ppu.new_frame
+tb.dut.ppu.rs2.new_line0
+tb.dut.synth.ext_tx_request
+tb.dut.synth.ext_tx_ack
+tb.dut.synth.controller.tx_source[1:0]
+tb.dut.synth.controller.tx_outstanding[2:0]
+tb.dut.synth.controller.have_sbio_credits
+tb.dut.synth.controller.tx_pins[1:0]
+@420
+tb.counter
+@200
+-
+@28
+tb.dut.ppu.tilemap.top_plane
+@22
+tb.dut.ppu.tilemap.top_attr[4:0]
+tb.dut.ppu.tilemap.top_pixels[3:0]
+@200
+-
+@28
+tb.dut.ppu.tilemap.index_decoder.always_opaque
+@22
+tb.dut.ppu.tilemap.index_decoder.pal[3:0]
+tb.dut.ppu.tilemap.index_decoder.pal_offset[3:0]
+@28
+tb.dut.ppu.tilemap.index_decoder.flip
+tb.dut.ppu.tilemap.index_decoder._2bpp
+@22
+tb.dut.ppu.tilemap.index_decoder.pixel_data[3:0]
+@28
+tb.dut.ppu.tilemap.index_decoder.pixel_index
+tb.dut.ppu.tilemap.index_decoder.data_2bpp[1:0]
+tb.dut.ppu.tilemap.index_decoder.opaque_2bpp
+@23
+tb.dut.ppu.tilemap.index_decoder.index_2bpp0[3:0]
 [pattern_trace] 1
 [pattern_trace] 0

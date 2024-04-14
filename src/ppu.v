@@ -206,6 +206,31 @@ module raster_scan2 #( parameter X_BITS=9, Y_BITS=8, X_SUBPHASE_BITS=2, Y_SUB_BI
 	end
 endmodule
 
+module color_index_decoder(
+		input wire [3:0] pixel_data,
+		input wire pixel_index, // In 2 bpp mode, use the low or high bits of pixel_data?
+		input wire [3:0] pal,
+		input wire always_opaque,
+
+		output wire [3:0] index,
+		output wire _2bpp,
+		output wire opaque
+	);
+
+	wire [3:0] pal_offset = {pal[3:1], 1'b0};
+	wire flip = pal[0];
+	assign _2bpp = (pal != '1);
+
+	// 2 bpp decoding
+	wire [1:0] data_2bpp = pixel_index == 1'b1 ? pixel_data[3:2] : pixel_data[1:0];
+	wire opaque_2bpp = always_opaque || (data_2bpp != '0);
+	wire [3:0] index_2bpp0 = opaque_2bpp ? (data_2bpp + pal_offset) : '0;
+	wire [3:0] index_2bpp = flip ? {index_2bpp0[1:0], index_2bpp0[3:2]} : index_2bpp0;
+
+	assign index  = _2bpp ? index_2bpp  : pixel_data;
+	assign opaque = _2bpp ? opaque_2bpp : (always_opaque || (pixel_data != '0));
+endmodule
+
 /*
 The sprite_unit module
 - Reads sprite data from RAM
@@ -697,9 +722,12 @@ module sprite_unit #(
 	wire [15:0] sprite_attr_x = attr_x[curr_sprite_buf];
 	wire [X_BITS-1:0] sprite_x;
 	wire sprite_wide, sprite_2bpp;
-	wire [1:0] sprite_pal;
+	//wire [1:0] sprite_pal;
 	wire [1:0] sprite_depth;
-	assign {sprite_depth, sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x[X_BITS+6-1:0];
+	//assign {sprite_depth, sprite_pal, sprite_2bpp, sprite_wide, sprite_x} = sprite_attr_x[X_BITS+6-1:0];
+	wire [3:0] sprite_pal;
+	wire sprite_always_opaque;
+	assign {sprite_pal, sprite_always_opaque, sprite_depth, sprite_x} = sprite_attr_x;
 
 	wire sprite_valid = valid_sprites[curr_sprite_buf];
 
@@ -708,12 +736,22 @@ module sprite_unit #(
 	wire x_match = (x_diff[X_BITS-1:SPRITE_X_BITS+1] == 0) && (sprite_wide || x_diff[SPRITE_X_BITS] == 0) && visible;
 	wire x_after = (x_diff[X_BITS] == 0) && !x_match && visible;
 
+/*
 	//wire [FULL_COLOR_BITS-1:0] curr_sprite_color = curr_sprite_pixels;
 	wire [COLOR_BITS-1:0] curr_sprite_color_2bpp_0 = x_diff[0] ? curr_sprite_pixels[3:2] : curr_sprite_pixels[1:0];
 	wire [FULL_COLOR_BITS-1:0] curr_sprite_color_2bpp = {curr_sprite_color_2bpp_0 == 0 ? 2'b0 : sprite_pal, curr_sprite_color_2bpp_0};
 	wire [FULL_COLOR_BITS-1:0] curr_sprite_color = sprite_2bpp ? curr_sprite_color_2bpp : curr_sprite_pixels;
 
 	wire opaque = curr_sprite_color != 0; // TODO: base on curr_sprite_color_2bpp_0 if sprite_2bpp?
+*/
+
+	wire [3:0] curr_sprite_color;
+	wire opaque;
+	color_index_decoder index_decoder(
+		.pixel_data(curr_sprite_pixels), .pixel_index(x_diff[0]), .pal(sprite_pal), .always_opaque(sprite_always_opaque),
+		.index(curr_sprite_color), .opaque(opaque), ._2bpp(sprite_2bpp)
+	);
+	assign sprite_wide = sprite_2bpp;
 
 	wire sprite_hit = (sprite_valid && x_match) && opaque && !sprite_try_catch_up;
 	assign scan_curr_sprite = sprite_valid && x_match && (!sprite_wide || x_diff[0]);
@@ -721,7 +759,7 @@ module sprite_unit #(
 	// The last sprite id will always be behind everything except the background color
 	// if curr_prio is used to check if we had a sprite hit
 	wire [ID_BITS+EXTRA_ID_BITS-1:0] curr_prio  = sprite_hit ? {1'b0, sprite_id} : '1; // assumes EXTRA_ID_BITS = 1
-	wire [1:0] curr_depth                       = sprite_hit ? sprite_depth : '1;
+	wire [1:0] curr_depth                       = sprite_hit ? sprite_depth      : '1;
 	wire [FULL_COLOR_BITS-1:0]       curr_color = sprite_hit ? curr_sprite_color : '0; // TODO: other default color?
 
 	wire replace_pixel = (opaque && curr_prio <= top_prio) || first_serial_cycle;
@@ -1161,25 +1199,45 @@ module tilemap_unit #(
 	reg [1:0] depth_out_reg;
 	//wire [3:0] next_out = pixels0 == '0 ? pixels1 : pixels0;
 
-	wire p0_2bpp = attr[0][0];
+	//wire p0_2bpp = attr[0][0];
+	wire p0_always_opaque;
+	wire [3:0] p0_pal;
+	assign {p0_pal, p0_always_opaque} = attr[0];
+	wire p0_2bpp = p0_pal != '1;
+
 	wire p0_opaque_4bpp = pixels0 != 0;
-	wire p0_opaque_2bpp = scan_plane[0] ? (pixels0[3:2] !== 0) : (pixels0[1:0] !== 0);
-	wire p0_opaque = p0_2bpp ? p0_opaque_2bpp : p0_opaque_4bpp;
+	wire p0_opaque_2bpp = scan_plane[0] ? (pixels0[3:2] != 0) : (pixels0[1:0] != 0);
+	wire p0_opaque = (p0_2bpp ? p0_opaque_2bpp : p0_opaque_4bpp) | p0_always_opaque;
 	wire top_plane = !p0_opaque;
 
 	wire plane_odd = scan_plane[top_plane];
 	wire [ATTR_BITS-1:0] top_attr = attr[top_plane];
+	wire [3:0] top_pixels = top_plane == 1 ? pixels1 : pixels0;
+
+	/*
 	wire [1:0] pal;
 	wire tile_2bpp;
 	assign {pal, tile_2bpp} = top_attr[2:0];
 
-	wire [3:0] curr_pixels = top_plane == 1 ? pixels1 : pixels0;
-	wire [COLOR_BITS-1:0] curr_color_2bpp_0 = plane_odd ? curr_pixels[3:2] : curr_pixels[1:0];
+	wire [COLOR_BITS-1:0] curr_color_2bpp_0 = plane_odd ? top_pixels[3:2] : top_pixels[1:0];
 	wire [FULL_COLOR_BITS-1:0] curr_color_2bpp = {curr_color_2bpp_0 == 0 ? 2'b0 : pal, curr_color_2bpp_0};
-	wire [FULL_COLOR_BITS-1:0] curr_color = tile_2bpp ? curr_color_2bpp : curr_pixels;
+	wire [FULL_COLOR_BITS-1:0] curr_color = tile_2bpp ? curr_color_2bpp : top_pixels;
+	*/
+
+	wire [3:0] pal;
+	wire always_opaque;
+	assign {pal, always_opaque} = top_attr;
+
+	wire [3:0] curr_color;
+	wire opaque;
+	color_index_decoder index_decoder(
+		.pixel_data(top_pixels), .pixel_index(plane_odd), .pal(pal), .always_opaque(always_opaque),
+		.index(curr_color), .opaque(opaque) //, ._2bpp(_2bpp)
+	);
+
 
 	wire [3:0] next_out = curr_color;
-	wire [1:0] next_depth = p0_opaque ? 0 : (curr_color != 0 ? 1 : 2);
+	wire [1:0] next_depth = p0_opaque ? 0 : (opaque ? 1 : 2);
 
 
 	always @(posedge clk) begin

@@ -262,17 +262,25 @@ async def test_ppu(dut):
 		# -----------
 		copper_addr = copper_base_addr
 
+		copper_extra = 64 # Enable fast mode
+
 		for i in range(3):
 			data = gfxmode[i]
-			ram[copper_addr].value = ((reg_addr_gfxmode1 + i) | (data << copper_addr_bits)) & 0xffff
+			ram[copper_addr].value = ((reg_addr_gfxmode1 + i) | copper_extra | (data << copper_addr_bits)) & 0xffff
 			copper_addr = (copper_addr + 1) & 0xffff # will wrap after two steps
 		for (i, data) in enumerate([sorted_base_addr>>6, oam_base_addr>>7, 0x21<<1, 0xb<<1]):
-			ram[copper_addr].value = ((reg_addr_sorted_base + i) | (data << copper_addr_bits)) & 0xffff
+			ram[copper_addr].value = ((reg_addr_sorted_base + i) | copper_extra | (data << copper_addr_bits)) & 0xffff
 			copper_addr += 1
 		# TODO: test both even and odd scroll_x for both planes
 		for (i, data) in enumerate([0,0,23,26]):
-			ram[copper_addr].value = ((reg_addr_scroll + i) | (data << copper_addr_bits)) & 0xffff
+			ram[copper_addr].value = ((reg_addr_scroll + i) | copper_extra | (data << copper_addr_bits)) & 0xffff
 			copper_addr += 1
+
+		if False:
+			data = 63 - 4 # Don't display sprites for now
+			ram[copper_addr].value = ((reg_addr_display_mask) | copper_extra | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+
 		table = [0,3,5,7]
 		for i in range(16):
 			#data = (i | (i << 4)) << 1
@@ -283,11 +291,20 @@ async def test_ppu(dut):
 			data = (table[i2] << 6) | (table[max(0, i1-1)] << 3) | table[i1]
 			#print(data)
 
-			ram[copper_addr].value = ((reg_addr_pal + i) | (data << copper_addr_bits)) & 0xffff
+			# Turn off fast mode for the last writes before cmp
+			if i >= 16-3: copper_extra = 0
+
+			ram[copper_addr].value = ((reg_addr_pal + i) | copper_extra | (data << copper_addr_bits)) & 0xffff
 			copper_addr += 1
-		#data = 63 - 4 # Don't display sprites for now
-		#ram[copper_addr].value = ((reg_addr_display_mask) | (data << copper_addr_bits)) & 0xffff
-		copper_addr += 1
+
+		for (i, scroll_x) in enumerate([20,3]):
+			data = 512-2*32 + 2*(8 + i*16)
+			ram[copper_addr].value = (reg_addr_cmp_y | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+			data = scroll_x
+			ram[copper_addr].value = ((reg_addr_scroll + 2*(1-i)) | (data << copper_addr_bits)) & 0xffff
+			copper_addr += 1
+
 
 		# stop code
 		ram[copper_addr].value = 0xffff

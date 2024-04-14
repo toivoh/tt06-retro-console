@@ -851,7 +851,9 @@ module copper #(
 	generate
 		for (i=0; i < DATA_DELAY; i++) assign dt_sreg_copper_data[i] = (dt_sreg[LOG2_NUM_LEVELS*(i+1)-1 -:LOG2_NUM_LEVELS] == BASE_LEVEL);
 	endgenerate
-	wire data_in_flight = |dt_sreg_copper_data;
+	//wire data_in_flight = |dt_sreg_copper_data;
+	// Ignore later data in flight in fast mode
+	wire data_in_flight = dt_sreg_copper_data[DATA_DELAY-1] || (!fast_mode && |dt_sreg_copper_data[DATA_DELAY-2:0]);
 
 	reg on, store_valid; // These registers may only be updated at serial_counter = 3
 	reg [15:0] store; // waiting store
@@ -859,6 +861,8 @@ module copper #(
 	reg cmp_on; // Delay the next write until compare match?
 	reg cmp_type; // Compare on x (0) or y (1)?
 	reg [WDATA_BITS-1:0] cmp;
+
+	reg fast_mode;
 
 	assign waddr = store[WADDR_BITS-1:0];
 
@@ -883,6 +887,7 @@ module copper #(
 				on <= 1; // TODO: Don't turn on at reset
 				store_valid <= 0;
 			end
+			fast_mode <= 0;
 		end else begin
 			if (serial_counter == 3 && wen && cmp_waddr_match && (waddr[1:0] == 2'b11)) begin
 				// Jump, prepare by writing cmp without activating compare
@@ -902,6 +907,8 @@ module copper #(
 			if (serial_counter == 1) store[ 7: 4] <= data_pins;
 			if (serial_counter == 2) store[11: 8] <= data_pins;
 			if (serial_counter == 3) store[15:12] <= data_pins;
+
+			if (serial_counter == 3) fast_mode <= store[6]; // update only when serial_counter == 3
 		end
 	end
 

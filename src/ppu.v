@@ -307,6 +307,7 @@ module sprite_unit #(
 
 		input wire [X_BITS-1:0] x, // Current x position on screen (will be used with some delay)
 		input wire [Y_BITS-1:0] y, // Current y position on screen
+		input wire y_frac,
 
 		input wire [1:0] serial_counter,
 
@@ -471,7 +472,7 @@ module sprite_unit #(
 
 	wire [Y_BITS-1:0] y_diff = y - data8;
 	wire y_match = got[IDY_INDEX] && (y_diff[Y_BITS-1:TILE_Y_BITS] == 0);
-	reg y_matched; // Y match is evaluated at serial_cycle == 1 but needed at serial_cycle == 3; save result here in the meantime
+	reg y_matched0; // Y match is evaluated at serial_cycle == 1 but needed at serial_cycle == 3; save result here in the meantime
 
 	// These counters actually only 2 bits wide, indexing into id_buffer.
 	// Ignore top bits not used to index id_buffer -- become unused.
@@ -483,6 +484,10 @@ module sprite_unit #(
 	// Consider: Add a register that can differentiate between completely full and completely empty?
 	wire [LOG2_ID_BUFFER_SIZE-1:0] in_counter_idy_plus1 = in_counter_idy + 1;
 	wire id_buffer_full = in_counter_idy_plus1 == out_counter_oam;
+
+	// Mask sprite on odd/even lines depending on the top two idy bits
+	wire [1:0] y_mask = data8[7:6];
+	wire y_matched = y_matched0 && !y_mask[y_frac];
 
 	wire can_store_match = scan_on && !id_buffer_full;
 	wire y_matched_store = y_matched && can_store_match;
@@ -497,7 +502,7 @@ module sprite_unit #(
 
 	always @(posedge clk) begin
 		// 8 bits y, then 8 bits id
-		if (serial_counter == 1) y_matched <= y_match; // Check when data8 contains y
+		if (serial_counter == 1) y_matched0 <= y_match; // Check when data8 contains y
 		if (last_serial_cycle && y_matched_store) id_buffer[in_counter_idy] <= data8[ID_BITS-1:0]; // Store when data8 contains id
 	end
 
@@ -1463,12 +1468,12 @@ module PPU #(
 		.LOG2_NUM_LEVELS(LOG2_NUM_LEVELS), .BASE_LEVEL(SPRITE_UNIT_LEVEL)
 	) sprite_buffer (
 		.clk(clk), .reset(reset), .restart(restart), .visible(visible),
-		.x(x), .y(y),
+		.x(x), .y(y), .y_frac(y_frac),
 		.serial_counter(serial_counter),
 		.addr_pins(addr_out_s), .data_pins(data_pins),
 		.temp_out(pixel_out_s), .depth_out(depth_out_s),
 		.request(request[SPRITE_UNIT_LEVEL+3-1 -: 3]), .dt_in(addr_level), .dt_out(data_level), .dt_sreg(levels_sreg),
-		.sorted_base_addr(sorted_base_addr), .oam_base_addr(oam_base_addr), .tile_base_addr(16'h8000)
+		.sorted_base_addr(sorted_base_addr), .oam_base_addr(oam_base_addr), .tile_base_addr(sprite_tile_base_addr)
 	);
 
 	// Tile map
@@ -1500,7 +1505,7 @@ module PPU #(
 		.addr_pins(addr_out_t), .data_pins(data_pins),
 		.request(request[TILEMAP_UNIT_LEVEL+2-1 -: 2]), .dt_in(addr_level), .dt_out(data_level),
 		.pixel_out(pixel_out_t), .depth_out(depth_out_t),
-		.map_base_addr0('h1000), .map_base_addr1('h2000), .tile_base_addr('hc000)
+		.map_base_addr0(map_base_addr0), .map_base_addr1(map_base_addr1), .tile_base_addr(map_tile_base_addr)
 	);
 
 	// Copper
@@ -1508,22 +1513,22 @@ module PPU #(
 	localparam REG_WDATA_BITS = 9;
 
 	localparam REG_ADDR_BITS_FULL = 7;
-	localparam REG_ADDR_BITS = 5; // Must be enough to include the stop code
+	localparam REG_ADDR_BITS = 6; // Must be enough to include the stop code
 
-	localparam NUM_BASE_ADDR_REGS = 2;
-	localparam BASE_ADDR_REG_BITS = 6; // TODO: Suitable size? Max 9 bits
+	localparam NUM_BASE_ADDR_REGS = 4;
+	localparam BASE_ADDR_REG_BITS = 9; // TODO: Suitable size? Max 9 bits
 
 	localparam REG_ADDR_PAL    =       0; // Must be aligned to palette size, 16 registers right now
 	localparam REG_ADDR_SCROLL =       16; // 4 registers
 	localparam REG_ADDR_CMP    =       20; // 4 registers right now
 	localparam REG_ADDR_BASE   =       24; // NUM_BASE_ADDR_REGS registers
 
-	localparam REG_ADDR_DISPLAY_MASK = 27; // 1 register right now
-
 	localparam REG_ADDR_GFXMODE1 = 28;
 	localparam REG_ADDR_GFXMODE2 = 29;
 	localparam REG_ADDR_GFXMODE3 = 30;
 	// Don't make a register with address 2**REG_ADDR_BITS - 1; that is used to signal the stopping condition for the copper
+
+	localparam REG_ADDR_DISPLAY_MASK = 31; // 1 register right now
 
 	localparam REG_SUB_ADDR_BITS = 2;
 
@@ -1546,7 +1551,7 @@ module PPU #(
 		.addr_pins(addr_out_c), .data_pins(data_pins),
 		.request(request[COPPER_LEVEL+1-1 -: 1]), .dt_in(addr_level), .dt_out(data_level), .dt_sreg(levels_sreg),
 		.x_cmp(x_cmp), .y_cmp(y_cmp),
-		.start_addr('h4000)
+		.start_addr('hfffe)
 	);
 
 	// Write scroll registers
@@ -1568,6 +1573,12 @@ module PPU #(
 	// Base address registers
 	wire [15:0] sorted_base_addr = {{(16-BASE_ADDR_REG_BITS-6){1'b0}}, base_addr_regs[0], 6'd0};
 	wire [15:0] oam_base_addr    = {{(16-BASE_ADDR_REG_BITS-7){1'b0}}, base_addr_regs[1], 7'd0};
+
+	wire [15:0] map_base_addr0        = {base_addr_regs[2][4:1], 12'd0};
+	wire [15:0] map_base_addr1        = {base_addr_regs[2][8:5], 12'd0};
+
+	wire [15:0] map_tile_base_addr    = {base_addr_regs[3][2:1], 14'd0};
+	wire [15:0] sprite_tile_base_addr = {base_addr_regs[3][4:3], 14'd0};
 
 	reg [BASE_ADDR_REG_BITS-1:0] base_addr_regs[NUM_BASE_ADDR_REGS];
 	generate

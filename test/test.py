@@ -226,23 +226,25 @@ async def test_ppu(dut):
 		reg_addr_jump2_msb = 23
 		reg_addr_sorted_base = 24
 		reg_addr_oam_base = 25
-		reg_addr_display_mask = 27
+		reg_addr_map_base = 26
+		reg_addr_tile_base = 27
 
 		reg_addr_gfxmode1 = 28
 		reg_addr_gfxmode2 = 29
 		reg_addr_gfxmode3 = 30
+		reg_addr_display_mask = 31
 
 		copper_addr_bits = 7
 		copper_data_bits = 16 - copper_addr_bits
 		map_tile_bits = 11
 
-		sorted_base_addr = 0
+		sorted_base_addr = 0x100
 		oam_base_addr = 0x80
 		sprite_tile_base_addr = 0x8000
 		map_base_addr0 = 0x1000
 		map_base_addr1 = 0x2000
 		map_tile_base_addr = 0xc000
-		copper_base_addr = 0x4000
+		copper_base_addr = 0xfffe
 
 		copper_addr_bits = 7
 		copper_data_bits = 16 - copper_addr_bits
@@ -263,8 +265,8 @@ async def test_ppu(dut):
 		for i in range(3):
 			data = gfxmode[i]
 			ram[copper_addr].value = ((reg_addr_gfxmode1 + i) | (data << copper_addr_bits)) & 0xffff
-			copper_addr += 1
-		for (i, data) in enumerate([sorted_base_addr>>6, oam_base_addr>>7]):
+			copper_addr = (copper_addr + 1) & 0xffff # will wrap after two steps
+		for (i, data) in enumerate([sorted_base_addr>>6, oam_base_addr>>7, 0x21<<1, 0xb<<1]):
 			ram[copper_addr].value = ((reg_addr_sorted_base + i) | (data << copper_addr_bits)) & 0xffff
 			copper_addr += 1
 		# TODO: test both even and odd scroll_x for both planes

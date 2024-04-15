@@ -1275,6 +1275,7 @@ module PPU #(
 
 		output wire [3:0] pixel_out, // No longer used
 		output wire [11:0] rgb_out,
+		output wire [5:0] rgb_dithered_out,
 		output wire active, hsync, vsync, // synced with rgb_out
 
 		output wire new_frame, // high for one cycle, the frame begins at vblank
@@ -1475,11 +1476,14 @@ module PPU #(
 	wire [1:0] dither = {x_frac ^ y_frac, y_frac};
 	wire [3:0] r0_out, g0_out, b0_out;
 	wire [1:0] r_out, g_out, b_out;
-	assign rgb_out = active ? {r_out, r_out, g_out, g_out, b_out, b_out} : '0;
 	assign {r0_out, g0_out, b0_out} = rgb_out_reg;
 	ditherer dither_r(.u(r0_out[3:1]), .dither(dither), .y(r_out));
 	ditherer dither_g(.u(g0_out[3:1]), .dither(dither), .y(g_out));
 	ditherer dither_b(.u(b0_out[3:1]), .dither(dither), .y(b_out));
+
+	//assign rgb_out = active ? {r_out, r_out, g_out, g_out, b_out, b_out} : '0;
+	assign rgb_dithered_out = active ? {r_out, g_out, b_out} : '0;
+	assign rgb_out = active ? rgb_out_reg : '0;
 
 
 	always @(posedge clk) begin

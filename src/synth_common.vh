@@ -36,4 +36,6 @@
 `define PPU_CTRL_BIT_RST_N       3'd0
 `define PPU_CTRL_BIT_SYNC_DATA   3'd1
 `define PPU_CTRL_BIT_SEND_EVENTS 3'd2
-`define PPU_CTRL_INITIAL         8'b011
+`define PPU_CTRL_BIT_DITHER      3'd3
+`define PPU_CTRL_BIT_RGB332_OUT  3'd4
+`define PPU_CTRL_INITIAL         8'b01011

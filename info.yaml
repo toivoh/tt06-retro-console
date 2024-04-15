@@ -49,8 +49,8 @@ pinout:
   uio[3]: "addr_out[3]"
   uio[4]: "tx_out[0]"
   uio[5]: "tx_out[1]"
-  uio[6]: "rx_in[0] / active_out"
-  uio[7]: "rx_in[1] / pixelclk_out"
+  uio[6]: "rx_in[0] / Gm1_active_out"
+  uio[7]: "rx_in[1] / RBm1_pixelclk_out"
 
 # Do not change!
 yaml_version: 6

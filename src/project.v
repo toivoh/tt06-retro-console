@@ -22,7 +22,15 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 
 	//wire reset = !rst_n;
 	reg reset;
-	always @(posedge clk) reset <= !rst_n;
+	reg [3:0] cfg;
+	always @(posedge clk) begin
+		reset <= !rst_n;
+		// Sample cfg as long as we're in reset
+		if (!rst_n) cfg <= ui_in[3:0]; // same as data_pins
+	end
+
+	wire rx_source_ui54 = cfg[0];
+	wire drive_uio_76   = cfg[0];
 
 	reg vblank_pending;
 	wire vblank_ack;
@@ -37,10 +45,12 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 
 	// Register all inputs and outputs, at least for now
 	reg [7:0] ui_in_reg, uio_in_reg, uo_out_reg, uio_out_reg;
+	reg [1:0] rx_in_reg;
 	wire [7:0] uo_out0, uio_out0;
 	always @(posedge clk) begin
 		ui_in_reg   <= ui_in;
 		uio_in_reg  <= uio_in;
+		rx_in_reg   <= rx_source_ui54 ? ui_in[5:4] : uio_in[7:6];
 		uo_out_reg  <= uo_out0;
 		uio_out_reg <= uio_out0;
 	end
@@ -66,13 +76,15 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 
 	wire [11:0] rgb_out;
 	wire hsync, vsync, active, new_frame;
+	wire [1:0] serial_counter;
 	PPU #(.RAM_PINS(RAM_PINS), .VPARAMS1(`VPARAMS_64_TEST)) ppu(
 		.clk(clk), .reset(reset_ppu),
 		.addr_pins(addr_pins), .data_pins(data_pins),
 		//.pixel_out(pixel_out),
 		.rgb_out(rgb_out),
 		.active(active), .new_frame(new_frame),
-		.hsync(hsync), .vsync(vsync)
+		.hsync(hsync), .vsync(vsync),
+		.serial_counter(serial_counter)
 	);
 
 	assign uo_out0 = {
@@ -86,13 +98,16 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 		rgb_out[8+3]  // R3
 	};
 
-	assign uio_oe = 8'b00111111;
+	//assign uio_oe = 8'b00111111;
+	assign uio_oe[5:0] = '1;
+	assign uio_oe[7:6] = drive_uio_76 ? 2'b11 : 2'b00;
 
 	assign data_pins = sync_data ? ui_in_reg[3:0] : ui_in[3:0];
-	assign rx_pins  = uio_in_reg[7:6];
+	//assign rx_pins  = uio_in_reg[7:6];
+	assign rx_pins   = rx_in_reg;
 
 	assign uio_out0[3:0] = addr_pins_out;
 	assign uio_out0[5:4] = tx_pins;
-	assign uio_out0[6] = active;
-	assign uio_out0[7] = 1'b0;
+	assign uio_out0[6] = active; // Used in GL test even though drive_uio_76 is low
+	assign uio_out0[7] = serial_counter[0] && drive_uio_76; // Pixel clock, rises in the middle of stable uo_out
 endmodule

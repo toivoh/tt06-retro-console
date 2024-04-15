@@ -66,7 +66,8 @@ module tt_um_toivoh_retro_console #( parameter RAM_PINS = 4, IO_BITS = 2) (
 		.ppu_ctrl(ppu_ctrl), .ext_tx_request(vblank_pending), .ext_tx_ack(vblank_ack)
 	);
 
-	wire sync_data = ppu_ctrl[`PPU_CTRL_BIT_SYNC_DATA];
+	// disable sync_data; it seems to bring setup time margin down to almost zero
+	wire sync_data = 1'b1; // ppu_ctrl[`PPU_CTRL_BIT_SYNC_DATA];
 	wire dither_out = ppu_ctrl[`PPU_CTRL_BIT_DITHER];
 	wire rgb332_out = ppu_ctrl[`PPU_CTRL_BIT_RGB332_OUT];
 

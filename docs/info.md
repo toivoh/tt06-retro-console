@@ -244,8 +244,8 @@ Each register has up to 9 bits. The registers are laid out as follows:
 	19      .          |  X | scroll_y1                             |
 	20      copper_ctrl|      cmp_x                                 |
 	21      .          |      cmp_y                                 |
-	22      .          |      jump_lsb                              |
-	23      .          |      jump_msb                              |
+	22      .          |      jump_low                              |
+	23      .          |      jump_high                             |
 	24      base_addr  |      base_sorted                           |
 	25      .          |      base_oam                              |
 	26      .          |      base_map1    |      base_map0     | X |
@@ -354,10 +354,102 @@ It will take some time `lspr` is set before new sprites are completely loaded an
 
 The VRAM addresses used for sprite display are
 
-	sprite_tiles_base = b_tile_s << 14
-	sorted_base       = base_sorted << 6
-	oam_base          = base_oam    << 7
+	sprite_tiles_base = b_tile_s    << 14
+	sorted_base       = base_sorted <<  6
+	oam_base          = base_oam    <<  7
 
+Sprites are described by two lists, each with 64 entries:
+- The _sorted list_ lists sprites in order of increasing x coordinates.
+- _Object Attribute Memory_ (OAM) defines most properties for the sprites.
+
+To display sprites correctly, they must be listed in the sorted list in order of increasing x coordinate, starting from `sorted_base`.
+Each entry in the sorted list is 16 bits:
+
+	  15   14   13 - 8   7 - 0
+	| m1 | m0 |  index |   y   |
+
+where
+- `y` is the sprite's y coordinate,
+- `index` is the sprite's index in OAM,
+- `m0` (`m1`) hides the sprite on even (odd) scan lines if it is set. (Each output pixel is displayed on two VGA scan lines.)
+
+If there are less than 64 sprites to be displayed, the remaining sorted entries should be masked by setting `m0` and `m1`, or moving the sprite to a y coordinate where it is not displayed.
+
+For each sprite, OAM contains two 16 bit words `attr_y` and `attr_x`, which define most of the sprite's properties. `attr_y` for sprite 0 is stored first, followed by `attr_x`, then the same for sprite 1, 2, etc.
+The contents are
+
+	attr_y:  15 14   13   -   4   3   2 - 0
+	       |   X   | tile_index | X | ylsb3 |
+
+	attr_x:  15 - 12        11         10 - 9   8 - 0
+	       |   pal   | always_opaque |  depth |   x   |
+
+where
+- the sprite's graphics are fetched from the two consecutive graphic tiles starting at `sprite_tiles_base + (tile_index << 4)`,
+- `ylsb3` is the 3 lowest bits of the sprite's y coordinate,
+- `pal` and `always_opaque` work as described in the Palette section,
+- `depth` specifies the sprite's depth relative to the tile planes,
+- `x` is the sprite's x coordinate.
+
+If several visible sprites overlap, the lowest numbered sprite with an opaque pixel wins.
+The `depth` value then decides whether that is displayed in front of the tile planes:
+- 0: In front of both tile planes.
+- 1: Behind plane 0, in front of plane 1.
+- 2: Behind both tile planes.
+- 3: Not displayed.
+
+A sprite with a `depth` value of 3 will block sprites with higher index from being displayed in the same location. If a sprite should be hidden but does not need to block other sprites in this manner, omit it from the sorted list instead.
+
+TODO: Describe sprite coordinate offsets.
+
+### Copper
+The copper executes simple instructions, which can
+- write to PPU registers,
+- wait until a given raster position is reached,
+- jump to continue copper execution at a different VRAM location, or
+- halt the copper until the beginning of the next frame.
+
+The copper is restarted each time a new frame begins, just after the last active pixel of the previous frame has been displayed. It always starts at VRAM location `0xfffe`, with `fast_mode = 0`.
+
+Each copper instruction is 16 bits:
+
+	  15 - 7 |     6       5 - 0
+	|  data  | fast_mode |  addr |
+
+where
+- `data` specifies the data to be written to a PPU register,
+- `fast_mode` enables the copper to run 3 times as fast, but is incompatible with waiting and jumping,
+- `addr` specifies the PPU register to be written (see PPU registers).
+
+The copper halts if it receives an instruction with `addr = 0xb111111`, otherwise it writes `data` to the PPU register given by `addr`, if one exists.
+
+The `copper_ctrl` PPU registers have specific effects on the copper:
+#### Compare registers
+Writing a value to `cmp_x` or `cmp_y` causes the copper to delay the next write until the specified compare value is >= to the specified x or y raster position.
+TODO: Describe mapping of raster position to `cmp_x` and `cmp_y`.
+
+#### Jumps
+Usually, the copper loads instructions from consecutive addresses.
+A sequence of two instructions is needed to execute a jump:
+- First, write the low byte of the jump address to `jump_low`.
+- Then, write the high byte of the jump address to `jump_high`. The jump is executed.
+
+There should be no writes to `cmp_x` or `cmp_y` between these two instructions, as the the `cmp` register is used to store the low byte of the jump address while waiting for the write to `jump_high`.
+
+#### Fast mode
+Each time an instruction arrives at the copper, the value of `fast_mode` in the instruction overwrites the current value.
+When `fast_mode = 0`, the copper does not start to read a new instruction until the previous instruction has finished. This allows waiting for compare values and jumping to work as intended.
+When `fast_mode = 1`, the copper can send a new read every other serial cycle (unless blocked by reads from the tile planes, which have higher priority), queuing up several reads before the instruction data from the first one arrives. This can allow the copper to work up to 3 times as fast, and works as intended as long as no writes are done to the `copper_ctrl` registers.
+
+The `fast_mode` bit
+- Should be set to zero
+	- at least three instructions before a write to any of the `copper_ctrl` registers,
+	- for instructions that follow a write to `cmp_x` or `cmp_y`.
+- Can be set to one by an instruction that writes to `jump_high` (but not the other `copper_ctrl` registers) unless it needs to be zero due to the above.
+
+### Graphics mode registers
+
+TODO: Values for different modes
 
 ## How to test
 

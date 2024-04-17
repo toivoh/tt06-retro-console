@@ -12,7 +12,7 @@
 
 # PL_TARGET_DENSITY - You can increase this if Global Placement fails with error GPL-0302.
 # Users have reported that values up to 0.8 worked well for them.
-set ::env(PL_TARGET_DENSITY) 0.68
+set ::env(PL_TARGET_DENSITY) 0.66
 
 # CLOCK_PERIOD - Increase this in case you are getting setup time violations.
 # The value is in nanoseconds, so 20ns == 50MHz.
@@ -33,8 +33,8 @@ set ::env(LINTER_INCLUDE_PDK_MODELS) 1
 set ::env(IO_PCT) 0.6
 
 # Try to reduce slew violations
-set ::env(PL_RESIZER_MAX_SLEW_MARGIN)  20
-set ::env(GLB_RESIZER_MAX_SLEW_MARGIN) 20
+set ::env(PL_RESIZER_MAX_SLEW_MARGIN)  30
+set ::env(GLB_RESIZER_MAX_SLEW_MARGIN) 30
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

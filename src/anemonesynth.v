@@ -261,8 +261,8 @@ module subsamp_voice #(
 	wire osc_index = osc_enable[1];
 
 	reg [PHASE_BITS-1:0] d_phase[NUM_OSCS];
-	reg [NUM_OSCS-1:0] d_delayed_p;
-	reg d_delayed_s;
+	reg [NUM_OSCS-1:0] d_delayed_p = 0;
+	reg d_delayed_s = 0;
 	reg [FP_BITS-1:0] d_float_period[NUM_OSCS];
 
 	wire [PHASE_BITS-1:0] curr_phase = phase[osc_index];
@@ -278,7 +278,7 @@ module subsamp_voice #(
 	wire [STEP_EXP_BITS-1:0] step_exp = step_exp0[OCT_BITS] ? 0 : step_exp0[STEP_EXP_BITS-1:0];
 	wire [SUBSAMP_BITS-1:0] step_mask = ((2**SUBSAMP_BITS - 1) << step_exp) >> SUBSAMP_BITS; // CONSIDER: Better way to compute?
 	//wire [SUBSAMP_BITS:0] phase_step = 1 << step_exp; // CONSIDER: Better way to compute?
-	wire [SUBSAMP_BITS:0] phase_step = {step_mask << 1, 1'b1} & ~{1'b0, step_mask};
+	wire [SUBSAMP_BITS:0] phase_step = {step_mask, 1'b1} & ~{1'b0, step_mask};
 
 
 	wire [PHASE_BITS-1:0] rev_phase0;
@@ -741,10 +741,10 @@ module subsamp_voice #(
 
 	// State variable filter
 	// =====================
-	reg [MOD_MANTISSA_BITS-1:0] d_running_counter;
+	reg [MOD_MANTISSA_BITS-1:0] d_running_counter = 0;
 	reg [MOD_BITS-1:0] d_mods[NUM_MODS];
 
-	reg [SVF_STATE_BITS-1:0] d_y, d_v;
+	reg [SVF_STATE_BITS-1:0] d_y = 0, d_v = 0;
 
 	wire [`A_SEL_BITS-1:0] a_sel_svf;
 	wire [`B_SEL_BITS-1:0] b_sel_svf;
@@ -839,7 +839,7 @@ module subsamp_voice #(
 	wire [RSHIFT_BITS-1:0] rshift_offs_fir = {{(RSHIFT_BITS - VOICE_VOL_BITS){1'b0}}, voice_vol};
 
 	reg [SUPERSAMP_BITS-1:0] fir_offset_msbs;
-	reg [SUBSAMP_BITS-1:0] d_fir_offset_lsbs;
+	reg [SUBSAMP_BITS-1:0] d_fir_offset_lsbs = 0;
 	wire [SAMP_BITS+1-1:0] next_fir_offset = fir_offset + (main_osc_enable ? (delayed_s ? 1 : 2**SUBSAMP_BITS) : 0);
 	assign sample_done = next_fir_offset[SAMP_BITS];
 

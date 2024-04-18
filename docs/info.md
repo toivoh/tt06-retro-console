@@ -10,15 +10,18 @@ You can also include images in this folder and reference them in the markdown. E
 ## What it is
 
 AnemoneGrafx-8 is a retro console containing
+
 - a PPU for VGA graphics output
 - an analog emulation polysynth for sound output
 
 The design is intended to work together with the RP2040 microcontroller on the Tiny Tapeout 06 Demo Board, the RP2040 providing
+
 - RAM emulation
 - Connections to the outside world for the console (except VGA output)
 - The CPU to drive the console
 
 Features:
+
 - PPU:
   - 320x240 @60 fps VGA output (actually 640x480 @60 VGA)
     - Some lower resolutions are also supported, useful if the design can not be clocked at 50.35 MHz
@@ -49,28 +52,30 @@ Features:
 ## How it works
 
 The console consists of two parts:
+
 - The PPU generates a stream of pixels that can be output as a VGA signals, based tile graphics, map, and sprite data read from memory, and the contents of the palette registers.
 - The synth generates a stream of samples by
 	- context switching between voices at a rate of 96 kHz
 		- adding the contributions for four 96 kHz samples from the voice to internal buffers in one go
 	- outputting each 96 kHz sample once it has received contributions from each voice
 
-### PPU
+### Using the PPU
 
 	                index
 	                depth,
-	    sprite unit ---->-\        index         rgb         rgb222
-	        || |           compose ----> palette --> dither ------->-
-	   tile map unit --->-/                                          \
-	        || |     index, depth                                     VGA out --->
-	       copper                                                    /
-	        |^ |   x, y                        hsync, vsync, active /
-	        || +<---------raster scan -> delay ------------------->-
-	        V|
+	    sprite unit --->-\       index       rgb       rgb222
+	        || |          compose --> palette -> dither----->-
+	   tile map unit -->-/                                    \
+	        || |    index, depth                               VGA ->
+	       copper                                              out
+	        |^ |   x, y                                       /
+	        || +<---------raster scan -> delay ------------->-
+	        V|                                hsync, vsync, active
 	---> read unit --->
 	data           addr
 
 The PPU is composed of a number of components, including:
+
 - The _sprite unit_ reads and buffers sprite data and sprite pixels, and outputs index and depth for the topmost sprite pixel
 - The _tile map unit_ reads and buffers tilemap and tile pixel data,  and outputs index and depth for the topmost tile map pixel
 - The _copper_ reads an instruction stream of register writes, wait for x/y, and jump instructions, and updates PPU registers accordingly
@@ -97,6 +102,7 @@ The pixel data for each plane (16 bits) is stored in a shift register and gradua
 The sprite unit is the most complex part of the PPU. It works with a list of 64 sprites, and has 4 sprite buffers that can load sprite data for the current scan line. Once the final x coordinate of a sprite has passed, the corresponding sprite buffer can be reused to load a new sprite on the same line, as long as there is time to load the data before it should be displayed.
 
 Sprite data is stored in memory in two structures:
+
 - The sorted buffer
 - The object attribute buffer
 
@@ -104,6 +110,7 @@ The sorted buffer must list all sprites to be displayed, sorted from left to rig
 The object attribute buffer contains all other object attributes: coordinates (only 3 lowest bits of y needed), palette, graphic tile, etc. (32 bits/sprite)
 
 Sprite processing proceeds in three steps, each with its own buffers and head/tail pointers:
+
 - Scan the sorted list to find sprites overlapping the current y coordinate (in order of increasing x value), store them in the id buffer (4 entries)
 - Load object attributes for sprites in the id buffer, store in a sprite buffer and free the id buffer entry (4 sprite buffers)
 - Load sprite pixels for sprites in the sprite buffer
@@ -114,9 +121,12 @@ Pixel data for each sprite buffer is stored in a 32 bit shift register, and grad
 
 ### Synth
 
-                    phase              phase
-	main oscillator ---->    linear    ---->  waveform  ---> State variable ---> FIR downsampling ---> output buffer
-	 sub oscillator ----> combinations       generators          filter               filter
+	    phase      phase      sample        sample      sample
+	main                 wave-
+	osc  --> linear      form       state         FIR         output
+	         combin- ==> gene- ===> variable ---> down-  ---> buffer
+	sub  --> ations      rators     filter        sampling
+	osc                                           filter
 
 The synth has 4 voices, but there is only memory for one voice at a time; the synth makes frequent context switches between the voices to be able to produce an output signal that contains the sum of the outputs.
 Each voice contributes four 96 kHz time steps worth of data to the output buffer before being switched out for the next.
@@ -142,6 +152,7 @@ Each time a voice is switched in, five sweep values are read from memory to deci
 
 ## IO interfaces
 AnemoneGrafx-8 has four interfaces:
+
 - VGA output `uo` / `(R1, G1, B1, vsync, R0, G0, B0, hsync)`
 - Read-only memory interface `(addr_out[3:0], data_in[3:0])` for the PPU
 - Memory/host interface `(tx_out[1:0], rx_in[1:0])` for the synth, system control, and vblank events
@@ -151,6 +162,7 @@ AnemoneGrafx-8 has four interfaces:
 	- Active signal and pixel clock, useful for e g HDMI output
 
 Additionally
+
 - `data_in[0]` is sampled into `cfg[0]` as long as `rst_n` is high to choose the output mode
 	- `cfg[0] = 0`: `uio[7:6]` is used to input `rx_in[1:0]`,
 	- `cfg[0] = 1`: `uio[7:6]` is used to output `{RBm1_pixelclk_out, Gm1_active_out}`.
@@ -169,6 +181,7 @@ By default, dithering is used to reduce the output to 6 bit color (two bits per 
 Dithering can be disabled, and the low order color bits `{RBm1, Gm1}` be output on `{RBm1_pixelclk_out, Gm1_active_out}`.
 
 The other output option for `(Gm1_active_out, RBm1_pixelclk_out)` is to output the `active` and `pixelclk` signals:
+
 - `active` is high when the current RGB output pixel is in the active display area.
 - `pixelclk` has one period per VGA pixel (two clock cycles), and is high during the second clock cycle that the VGA pixel is valid.
 
@@ -190,6 +203,7 @@ The `data_in` to `addr_out` loopback function has been provided to help calibrat
 
 To respond correctly to reads requests, one must know when a serial cycle starts.
 This accomplished by an initial synchronization step:
+
 - After reset, `addr_pins` start at zero.
 - During the first serial cycle, a fixed address of `0x8421` is transmitted, and the corresponding data is discarded
 
@@ -199,15 +213,18 @@ It uses start bits to allow each side to initiate a message when appropriate, su
 `tx_out` and `rx_in` are expected to remain low when no messages are sent.
 
 `tx_out[1:0]` is used for messages from the console:
+
 - a message is initiated with one cycle of `tx_out[1:0] = 1` (low bit set, high bit clear),
 - during the next cycle, `tx_out[1:0]` contains the 2 bit _tx header_, specifying the message type,
 - during the following 8 cycles, a 16 bit payload is sent through `tx_out[1:0]`, from lowest bits to highest.
 
 `rx_in[1:0]` is used for messages to the console:
+
 - a message is initiated with one cycle when `rx_in[1:0] != 0`, specifying the _rx header_, i e, the message type
 - during the following 8 cycles, a 16 bit payload is sent through `rx_in[1:0]`, from lowest bits to highest.
 
 TX message types:
+
 - 0: Context switch: Store payload into state vector, return the replaced state value (rx header=1), increment state pointer.
 - 1: Sample out: Payload is the next output sample from the synth, 16 bit signed.
 - 2: Read: Payload is address, return corresponding data (rx header=2).
@@ -216,11 +233,13 @@ TX message types:
 The state pointer should wrap after 36 words.
 
 RX message types:
+
 - 1: Context switch response.
 - 2: Read response.
 - 3: Write register. Top byte of payload is register address, bottom is data value.
 
 Available registers:
+
 - 0: `sample_credits` (initial value 1)
 - 1: `sbio_credits` (initial value 1)
 - 2: `ppu_ctrl` (initial value `0b01011`)
@@ -252,17 +271,19 @@ Each register has up to 9 bits. The registers are laid out as follows:
 	27      .          |      X            |b_tile_s | b_tile_p | X |
 	28      gfxmode1   |      r_xe_hsync             | r_x0_fp      |
 	29      gfxmode2   |vpol|hpol|  vsel   |      r_x0_bp           |
-	30      gfxmode3   |      r_xe_active                           |
+	30      gfxmode3   |      xe_active                             |
 	31      displaymask|      X       |lspr|lpl1|lpl0|dspr|dpl1|dpl0|
 
 where `X` means that the bit(s) in question are ignored.
 
 Initial values:
+
 - The `gfxmode` registers are initialized to `320x240` output (640x480 VGA output; pixels are always doubled in both directions before VGA output).
 - The `displaymask` register is initialized to load and display sprites as well as both tile planes (initial value `0b111111`).
 - The other registers, except the `copper_ctrl` category, need to be initialized after reset.
 
 Each PPU register is described in the appropriate section:
+
 - Palette (`pal0-pal15`)
 - Tile planes (`scroll`, `base_map0`, `base_map1`, `b_tile_p`, `lpl0`, `lpl1`, `dpl0`, `dpl1`)
 - Sprites (`base_sorted`, `base_oam`, `b_tile_s`, `lspr`, `dspr`)
@@ -308,6 +329,7 @@ _Note that color 0 is transparent unless the `always_opaque` bit of the sprite/t
 If no tile or sprite covers a given pixel, palette color 0 is used as background color.
 
 In 16 color mode, two horizontally consecutive 2 bit pixels are used to form one 4 bit pixel.
+
 - For 16 color tiles, each pixel is twice as wide to preserve the same total width.
 - 16 color sprites are half as wide (8 pixels instead of 16).
 
@@ -319,6 +341,7 @@ Within each line, the first pixel is stored in the bottom two bits, then the nex
 ### Tile planes
 The PPU supports two independently scrolling tile planes. Plane 0 is in front of plane 1.
 Four `display_mask` bits control the behavior of the tile planes:
+
 - When `dpl0` (`dpl1`) is cleared, plane 0 (1) is not displayed.
 - When `lpl0` (`lpl1`) is cleared, no data for plane 0 (1) is loaded.
 
@@ -347,6 +370,7 @@ Each sprite can be 16x8 pixels (4 color) or 8x8 pixels (16 color).
 The PPU supports up to 64 simultaneous sprites in oam memory, but only 4 can overlap at the same time. Once a sprite is done for the scan line, the PPU can load a new sprite into the same slot, to display later on the same scan line, but it takes a number of pixels (partially depending on how much memory traffic is used by the tile planes and the copper.) More than 64 sprites can be displayed in a single frame by using the copper to change base addresses mid frame.
 
 Two `display_mask` bits control the behavior of the sprite display:
+
 - When `dspr` is cleared, no sprites are displayed.
 - When `lspr` is cleared, no data for sprites is loaded.
 
@@ -359,6 +383,7 @@ The VRAM addresses used for sprite display are
 	oam_base          = base_oam    <<  7
 
 Sprites are described by two lists, each with 64 entries:
+
 - The _sorted list_ lists sprites in order of increasing x coordinates.
 - _Object Attribute Memory_ (OAM) defines most properties for the sprites.
 
@@ -369,6 +394,7 @@ Each entry in the sorted list is 16 bits:
 	| m1 | m0 |  index |   y   |
 
 where
+
 - `y` is the sprite's y coordinate,
 - `index` is the sprite's index in OAM,
 - `m0` (`m1`) hides the sprite on even (odd) scan lines if it is set. (Each output pixel is displayed on two VGA scan lines.)
@@ -385,6 +411,7 @@ The contents are
 	       |   pal   | always_opaque |  depth |   x   |
 
 where
+
 - the sprite's graphics are fetched from the two consecutive graphic tiles starting at `sprite_tiles_base + (tile_index << 4)`,
 - `ylsb3` is the 3 lowest bits of the sprite's y coordinate,
 - `pal` and `always_opaque` work as described in the Palette section,
@@ -393,6 +420,7 @@ where
 
 If several visible sprites overlap, the lowest numbered sprite with an opaque pixel wins.
 The `depth` value then decides whether that is displayed in front of the tile planes:
+
 - 0: In front of both tile planes.
 - 1: Behind plane 0, in front of plane 1.
 - 2: Behind both tile planes.
@@ -404,6 +432,7 @@ TODO: Describe sprite coordinate offsets.
 
 ### Copper
 The copper executes simple instructions, which can
+
 - write to PPU registers,
 - wait until a given raster position is reached,
 - jump to continue copper execution at a different VRAM location, or
@@ -417,6 +446,7 @@ Each copper instruction is 16 bits:
 	|  data  | fast_mode |  addr |
 
 where
+
 - `data` specifies the data to be written to a PPU register,
 - `fast_mode` enables the copper to run 3 times as fast, but is incompatible with waiting and jumping,
 - `addr` specifies the PPU register to be written (see PPU registers).
@@ -431,6 +461,7 @@ TODO: Describe mapping of raster position to `cmp_x` and `cmp_y`.
 #### Jumps
 Usually, the copper loads instructions from consecutive addresses.
 A sequence of two instructions is needed to execute a jump:
+
 - First, write the low byte of the jump address to `jump_low`.
 - Then, write the high byte of the jump address to `jump_high`. The jump is executed.
 
@@ -442,14 +473,165 @@ When `fast_mode = 0`, the copper does not start to read a new instruction until 
 When `fast_mode = 1`, the copper can send a new read every other serial cycle (unless blocked by reads from the tile planes, which have higher priority), queuing up several reads before the instruction data from the first one arrives. This can allow the copper to work up to 3 times as fast, and works as intended as long as no writes are done to the `copper_ctrl` registers.
 
 The `fast_mode` bit
+
 - Should be set to zero
 	- at least three instructions before a write to any of the `copper_ctrl` registers,
 	- for instructions that follow a write to `cmp_x` or `cmp_y`.
 - Can be set to one by an instruction that writes to `jump_high` (but not the other `copper_ctrl` registers) unless it needs to be zero due to the above.
 
 ### Graphics mode registers
+The `gfxmode` registers allow to change the timing of the VGA raster scan.
+The horizontal timing can be changed in fine grained steps, while the vertical timing supports 3 options.
 
-TODO: Values for different modes
+The intention of the `gfxmode` registers is to support output in the VGA modes
+
+	640x480 @ 60 Hz
+	640x400 @ 70 Hz
+	640x350 @ 70 Hz
+
+The visual output resolution will be halved in both directions, by doubling the pixels.
+
+These VGA modes are all based on a pixel clock of 25.175 MHz, which can be achieved if the console is clocked at twice the pixel clock, or 50.35 MHz. (VGA monitors should be quite tolerant of deviations around this frequency, 50.4 MHz should be fine and can be achieved with the RP2040 PLL.)
+
+The intention is also to support reduced horizontal resolution while generating a VGA signal according to one of these modes, in case the console has to be clocked at a lower frequency. This will lower the output frequency that can be achieved by the synth as well.
+
+#### Vertical timing
+The `vsel` bits select between vertical timing options:
+
+		   VGA     PPU pixel
+	vsel   lines   rows                         recommended polarity
+	   0     480     240                        vpol=1, hpol=1
+	   1      64      32  test mode (not VGA)   -
+	   2     400     200                        vpol=0, hpol=1
+	   3     350     175                        vpol=1, hpol=0
+
+The `hpol` and `vpol` bits control the sync polarity (0=positive, 1=negative). Original VGA monitors may use these to distinguish between modes; modern monitors should be able to detect the mode from the timing.
+
+#### Horizontal timing
+Possible horizontal timings include
+
+	VGA        PPU pixel
+	columns    columns    PPU clock    gfxmode1  gfxmode2  gfxmode3
+	    640        320    50.35  MHz     0x0178    0x0188    0x01bf
+	    424        212    33.57  MHz     0x00f9    0x0190    0x0153
+	    416        208    33.57  MHz     0x00f8    0x018d    0x014f
+	    320        160    25.175 MHz     0x00bc    0x0194    0x011f
+
+where the `vsel`, `hpol`, and `vpol` bits have been set to 480 line mode, but this can be easily changed by updating the `gfxmode2` value.
+The 416 column mode is a tweak on the 424 column mode to fit a whole number of tiles (26) in the horizontal direction. In 424 and 416 column mode, one PPU pixel should be stretched to 3 VGA pixels horizontally, and in 320 column mode, it should be stretched to 4.
+
+The "PPU clock" column lists the recommended clock frequency to feed the console in order to achieve the 60 fps (640x480 modes) or 70 fps (640x400 and 640x350 modes).
+In practice, VGA monitors seem quite tolerant of timing variations, and might, e g, accept a 640x480 signal at down to 2/3 of the expected clock rate.
+
+The `gfxmode` registers control the horizontal timing accordigng to
+
+	active:      xe_active - 127  PPU pixels
+	front porch: 8  - r_x0_fp     PPU pixels
+	hsync:        1 + r_xe_hsync  PPU pixels
+	back porch:  32 - r_x0_bp     PPU pixels
+
+where `xe_active` must be >= 128.
+
+### Using AnemoneSynth
+AnemoneSynth is a synth with four voices, each with 
+
+- two oscillators (main and sub),
+- three waveform generators,
+- a second order filter.
+
+The synth is designed for an output sample rate `output_freq` of 96 kHz (higher sample rates are used in intermediate steps), which should be achievable if the console is clocked at close to the target frequency of 50.34 MHz. The user of the synth can reduce `output_freq` by requesting output samples less frequently.
+
+The hardware processes one voice at a time, and periodically performs a context switch to write the state of the active voice out to RAM and read in the state for the next active voice.
+The voice state is divided into dynamic state (updated by the synth) and parameters (not updated by the) synth. Much of the behavior of a voice can be controlled through its parameters.
+
+The state of a voice also includes the frequencies of its two oscillators, and three control frequencies controlling the filter. This is dynamic state, because it can be updated according to sweep parameters, specifiying a certain rate of rise or fall. Sweep parameters are not stored in the voice state, but are read from RAM as needed to update the frequencies. Envelopes can be realized by changing sweep parameters over time.
+
+#### Voice state
+The voice state consists of twelve 16 bit words:
+
+	bit       bit
+	address   width   name
+	      0       1   delayed_s
+	      1       2   delayed_p
+	      3       3   fir_offset_low
+	      6      10   phase[0]
+	     16      10   phase[1]
+	     26       6   running_counter
+	     32      20   y
+	     52      20   v
+	     72      14   float_period[0]   main oscillator period
+	     86      14   float_period[1]   sub-oscillator period
+	    100      10   mod[0]            control period 0
+	    110      10   mod[1]            control period 1
+	    120      10   mod[2]            control period 2
+	    130       5   lfsr_extra
+	    135       1   ringmod_state
+
+	    136      13   wf_params[0]      waveform 0 parameters
+	    149      13   wf_params[1]      waveform 1 parameters
+	    162      13   wf_params[2]      waveform 2 parameters
+	    175      13   voice_params      voice parameters
+	    188       4   unused
+
+The dynamic part of the state contains many things, but the parts the need to be controlled use the synth are primarily `float_period` and `mod` fields, which can be set and swept through the sweep parameters.
+The parameter part of the state begins at `wf_params[0]`.
+
+There are three sets of waveform parameters `wf_params`, each consisting of 13 bits:
+
+	bit       bit
+	address   width   name         default
+	      0       3   wf
+	      3       2   phase0_shl         0
+	      5       2   phase1_shl         0
+	      7       2   phase_comb
+	      9       3   wfsignvol          0
+	     12       1   ringmod            0
+
+The voice parameters `voice_params` also consist of 13 bits:
+
+	bit       bit
+	address   width   name             default
+	      0       1   lfsr_en                0
+	      1       2   topology               0
+	      3       3   bpf_en                 0
+	      6       1   hardsync               0
+	      7       4   hardsync_phase         0
+	     11       2   vol                    0
+
+#### Frequency representation
+Frequencies are represented by periods in a kind of floating point format, with 4 bits to set the octave, and 10 or 6 bits to set the mantissa:
+
+	{oct[3:0], mantissa[9:0]} = float_period[i]  // for oscillator periods
+	{oct[3:0], mantissa[5:0]} = mod[i]           // for control periods
+
+The period value is calculated as
+
+	osc_period[i] = (1024 + mantissa) << oct     // for oscillator periods
+	mod_period[i] =   (64 + mantissa) << oct     // for control periods
+
+except that `oct = 15` corresponds to an infinite period, or a frequecy of zero.
+The oscillator frequencies are given by
+
+	osc_freq[i] = output_rate * 32 / osc_period[i]
+
+so at `output_freq = 96 kHz`, the highest achievable oscillator frequency is 3 kHz (and the lowest is a bit below 0.1 Hz).
+The control frequencies are given by
+
+	mod_freq[i] = output_rate * 256 / mod_period[i]
+
+#### Waveform parameters
+The `wf` parameter selects one of 8 wave forms:
+
+	wf    wave form
+	 0    sawtooth wave
+	 1    sawtooth wave, 2 bit
+	 2    triangle wave
+	 3    triangle wave, 2 bit
+	 4    square wave
+	 5    pulse wave, 37.5% duty cyckle
+	 6    pulse wave, 25%   duty cyckle
+	 7    pulse wave, 12.5% duty cyckle
+
 
 ## How to test
 

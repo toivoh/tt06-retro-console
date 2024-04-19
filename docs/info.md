@@ -244,6 +244,8 @@ Available registers:
 - 1: `sbio_credits` (initial value 1)
 - 2: `ppu_ctrl` (initial value `0b01011`)
 
+TODO: Describe the registers!
+
 ## Using the PPU
 The PPU is almost completely controlled through the VRAM (video RAM) contents.
 The copper is restarted when a new frame begins, and starts to read instructions at address `0xfffe`. Copper instructions can write PPU registers; using the copper is the only way to write and initialize these registers.
@@ -583,8 +585,9 @@ There are three sets of waveform parameters `wf_params`, each consisting of 13 b
 	      0       3   wf
 	      3       2   phase0_shl         0
 	      5       2   phase1_shl         0
-	      7       2   phase_comb
-	      9       3   wfsignvol          0
+	      7       2   phase_comb         0/1/2 for waveform 0/1/2
+	      9       2   wfvol              0
+	     11       1   wfsign             0
 	     12       1   ringmod            0
 
 The voice parameters `voice_params` also consist of 13 bits:
@@ -592,7 +595,7 @@ The voice parameters `voice_params` also consist of 13 bits:
 	bit       bit
 	address   width   name             default
 	      0       1   lfsr_en                0
-	      1       2   topology               0
+	      1       2   filter_mode            0
 	      3       3   bpf_en                 0
 	      6       1   hardsync               0
 	      7       4   hardsync_phase         0
@@ -612,17 +615,48 @@ The period value is calculated as
 except that `oct = 15` corresponds to an infinite period, or a frequecy of zero.
 The oscillator frequencies are given by
 
-	osc_freq[i] = output_rate * 32 / osc_period[i]
+	osc_freq[i] = output_freq * 32 / osc_period[i]
 
 so at `output_freq = 96 kHz`, the highest achievable oscillator frequency is 3 kHz (and the lowest is a bit below 0.1 Hz).
 The control frequencies are given by
 
-	mod_freq[i] = output_rate * 256 / mod_period[i]
+	mod_freq[i] = output_freq * 256 / mod_period[i]
 
-#### Waveform parameters
-The `wf` parameter selects one of 8 wave forms:
+#### Signal path
+The signal path starts at the two oscillators, which feed 3 waveform generators. Each waveform generator can be fed with a different linear combination of oscillator phases. The waveforms are fed into the filter. Finally, the output of the filter is summed for all the voices to create the synth's output signal.
 
-	wf    wave form
+##### Oscillators
+The main and sub-oscillators both produce sawtooth waves as output.
+When we talk about phase, it refers to such a sawtooth value, increasing at a constant rate over the period, and wrapping once per period.
+The sub-oscillator can produce noise instead by setting `lfsr_en=1`. (TODO: Describe noise frequency dependence on `osc_period[1]`.)
+
+The main oscillator is intended to be set voice's current pitch (or possibly the pitch divided by a small integer). This makes the voice's supersampling and antialiasing produce the best result, to avoid aliasing artifacts, especially for high pitched voices.
+
+If the voice's output signal is periodic with the main oscillator's period, there should be very little aliasing artifacts. If the output waveform varies slowly when the voice output is chopped up into periods equal to the main oscillator period, there should still be little aliasing.
+
+The sub-oscillator has lower frequency resolution than the main oscillator in the highest octaves: 1 bit less when `oct=2`, 2 bits less when `oct=1`, and 3 bits less when `oct=3`.
+The simplest use of the sub-oscillator is to set it to a frequency of maybe 1/1000 of the main oscillator frequency, and use three waveforms with `main + sub`, `main`, and `main - sub` to get a detuning effect.
+Higher frequency compared to the main oscillator gives more detuning.
+
+The sub-oscillator can be hard-synced to the main oscillator by setting `hardsync=1`.
+When enabled, the phase of the sub-oscillator resets to `hardsync_phase << 6` whenever the main oscillator completes a period.
+
+##### Combining the oscillators
+The `phase_comb`, `phase0_shl` and `phase1_shl` of each waveform specify how to calculate the waveform generator's input phase from the oscillator phases.
+The `phase_comb` parameter selects between four modes:
+
+	phase_comb 		phase
+			 0 		(main << phase0_shl) + (sub << phase1_shl)
+			 1 		(main << phase0_shl) - (sub << phase1_shl)
+			 2 		(main << phase0_shl)
+			 3 		                       (sub << phase1_shl)
+
+A good default is to set `phase_comb` to 0 for one waveform, 1 for one, and 2 for one, leaving the other waveorm parameters the same. Combined with a sub-oscillator at around a 1/1000 of the main oscillator frequency, this creates a detuning effect.
+
+##### Waveform generator
+The `wf` parameter selects between 8 wave forms:
+
+	wf    waveform
 	 0    sawtooth wave
 	 1    sawtooth wave, 2 bit
 	 2    triangle wave
@@ -632,6 +666,95 @@ The `wf` parameter selects one of 8 wave forms:
 	 6    pulse wave, 25%   duty cyckle
 	 7    pulse wave, 12.5% duty cyckle
 
+All waveforms have a zero average level. The peak-to-peak amplitude of the pulse waves is half that of the other waveforms.
+
+The waveform amplitude is multiplied by `2^-wfvol`. If `wfsign=1`, it is inverted.
+If `wfvol=3, wfsign=1`, the waveform is silenced.
+
+If `ringmod=1`, the waveform is inverted when the output of the previous waveform generator is negative before the effects of `wfvol`, `wfsign`, and `ringmod` have been applied (waveform 2 is previous to waveform 0).
+
+##### Filter
+The output from each waveform generator is fed into the filter.
+The `filter_mode` parameters selects the filter type:
+
+	filter_mode
+	          0   2nd order filter
+	          1   2nd order filter, transposed
+	          2   2nd order filter, two volumes, default damping
+	          3   Two cascaded 1st order filters
+
+The `mod` interpretation of the mod states depends on the filter mode:
+
+	filter_mode   mod[0]   mod[1]   mod[2]
+	          0   cutoff   fdamp    fvol
+	          1   cutoff   fdamp    fvol
+	          2   cutoff   fvol2    fvol
+	          3   cutoff   cutoff2  fvol
+
+The transposed filter mode 1 is expected to be a bit noisier than the default mode 0, and have somewhat different overdrive behavior.
+Howerver, in filter modes 1 and 3, `bpf_en[i]` can be used to change the point where waveform `i` feeds into the filter:
+
+- For `filter_mode=1`,  `bpf_en[i]=1` makes the filter behave as a band pass filter for that waveform.
+- For `filter_mode=3`,  `bpf_en[i]=1` feeds the waveform straight into the second low pass filter.
+
+The volume feeding into the filter is generally given by 
+
+	gain = fvol / cutoff
+
+but for `filter_mode=3`,
+
+- `fvol2` is used instead of `fvol` for waveform 1,
+- `cutoff2` is used instead of `cutoff` when  `bpf_en[i]=1`.
+
+It is possible to overdrive the filter, which will saturate. This can be a desirable effect.
+
+For filter modes 0-2, the filter cutoff frequency is given by
+
+	cutoff_freq = cutoff / (2*pi)
+
+For filter mode 3, it is given by `cutoff` (TODO: check).
+
+Filter modes 0 and 1 implement resonant filters, the resonance is given by
+
+	Q = cutoff / f_damp
+
+where the resonance can start to be noticeable when `Q` becomes > 1.
+
+##### Output
+The filter output from each voice is multiplied by `2^(-vol)` and then these contributions are added together to from the synth's output.
+
+### Sweeps
+Each voice has five sweep values, which can be used to sweep the oscillaror and control frequencies gradually up or down, or set them to new values without interfering with synth's state updates.
+
+Each sweep value is a 16 bit word.
+A voice will periodically send read messages (tx header = 2) to read its sweep values, with
+
+	address = (voice_index << 3) + sweep_index
+
+where `sweep_index` describes the target of the sweep value:
+
+	sweep_index   target
+			  0   float_period[0]
+			  1   float_period[1]
+			  2   mod[0]
+			  3   mod[1]
+			  4   mod[2]
+
+The sweep value can have two formats:
+
+	 15  14  13  12  11  10   9   8   7   6   5   4   3   2   1   0
+	| X | 0 | replacement value                                    |
+	| X | 1 | X        |sign| oct           | mantissa             |
+
+In the first case, the target value is simply replaced. For `mod` targets, the lowest four bits of the replacement value are discarded.
+
+In the second case, the target is incremented (`sign=0`) or decremented (`sign=1`) at a rate that is described by `oct` and `mantissa` which are arranged in the same kind of simple floating point format as is used for `mod` values.
+The maximum that the target can be incremented or decremented by one is `output_freq / 2`, achieved when `oct` and `mantissa` are zero. In general, the sweep rate is
+
+	sweep_rate = 32 * output_freq / ((64 + mantissa) << oct)
+
+Sweeping will never cause the target value to wrap around, but may cause it to stop a single step short of the extreme value.
+When `oct=15`, no sweeping will occur. This can be accomplished by setting the sweep value to all ones.
 
 ## How to test
 

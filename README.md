@@ -14,17 +14,17 @@ The [Tiny Tapeout 06 Demo Board](https://tinytapeout.com/specs/pcb/) contains an
 
 Features:
 - PPU:
-  - 320x240 @60 fps VGA output (actually 640x480 @60 VGA)
-    - Some lower resolutions are also supported, useful if the design can not be clocked at 50.35 MHz
+  - 320x240 @60 fps VGA output (actually 640x480 @60 fps VGA)
+    - Some lower resolutions are also supported, useful if the design can not be clocked at the target 50.35 MHz
   - 16 color palette, choosing from 256 possible colors
   - Two independently scrolling tile planes
     - 8x8 pixel tiles
     - color mode selectable per tile:
-      - 2 bits per pixel, using 4 subpalettes (selectable per tile)
-      - 4 bits per pixel, halved horizontal resolution (4x8 stretched to 8x8 pixels)
+      - 2 bits per pixel, using one of 15 subpalettes per tile
+      - 4 bits per pixel, halved horizontal resolution
   - 64 simultaneous sprites (more can be displayed at once with some Copper tricks)
     - mode selectable per sprite:
-      - 16x8, 2 bits per pixel using 4 subpalettes (selectable per sprite)
+      - 16x8, 2 bits per pixel using one of 15 subpalettes per sprite
       - 8x8, 4 bits per pixel
     - up to 4 sprites can be loaded and overlapping at the same pixel
       - more sprites can be visible on same scan line as long as they are not too cramped together
@@ -35,9 +35,10 @@ Features:
   - 16 bit 96 kHz output
   - 4 voices, each with
     - Two oscillators
-      - Option to let the sub-oscillator generate noise
-    - Three waveform generators with choice of sawtooth, triangle, pulse waves with 4 different duty cycles, 2 bit sawooth and triangle
+      - sweepable frequency
+      - noise option
+    - Three waveform generators with 8 waveforms: sawtooth/triangle/2 bit sawtooth/2 bit triangle/square wave/pulse wave with 37.5% / 25% / 12.5% duty cycle
     - 2nd order low pass filter
-      - Sweepable volume, cutoff frequency, and resonance
+      - sweepable volume, cutoff frequency, and resonance
 
 For more details, see https://github.com/toivoh/tt06-retro-console/blob/main/docs/info.md.

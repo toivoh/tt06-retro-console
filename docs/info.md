@@ -532,7 +532,6 @@ The `copper_ctrl` PPU registers have specific effects on the Copper:
 #### Compare registers
 Writing a value to `cmp_x` or `cmp_y` causes the Copper to delay the next write until the current raster x/y
 position is >= the specified compare value.
-TODO: Describe mapping of raster position to `cmp_x` and `cmp_y`.
 
 The raster position for x intially goes from `24 + r_x0_fp` to `32 + r_xe_hsync` as the raster scan goes through the front porch and horizontal sync (counted as the first part of the scan line).
 Due to a bug, during the back porch and active regions, it is then calculated as 

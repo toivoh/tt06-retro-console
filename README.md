@@ -12,6 +12,8 @@ The [Tiny Tapeout 06 Demo Board](https://tinytapeout.com/specs/pcb/) contains an
 - Connections to the outside world for the console (except VGA output)
 - The CPU to drive the console
 
+A demo of the console's graphics running in silicon can be seen at https://youtu.be/j8XpiC0cEMM. The soure code is available at https://github.com/toivoh/tt06-retro-console-rp2040.
+
 Features:
 - PPU:
   - 320x240 @60 fps VGA output (actually 640x480 @60 fps VGA)
